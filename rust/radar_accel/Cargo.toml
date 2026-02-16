@@ -1,0 +1,16 @@
+[package]
+name = "radar_accel"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "radar_accel"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+pyo3-build-config = "0.22"

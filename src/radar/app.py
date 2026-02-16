@@ -1,0 +1,402 @@
+"""
+Main application orchestrator — wires data, UI, and theme systems.
+
+Manages the async data fetching loop, DearPyGui render loop,
+and coordinates updates between all components.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import threading
+import time
+from datetime import datetime, timezone
+from queue import Empty, Queue
+from typing import Any
+
+import dearpygui.dearpygui as dpg
+
+from radar.config import RadarConfig, THEMES_DIR
+from radar.data.earthquake import EarthquakeDiff, EarthquakeEvent, EarthquakeFetcher
+from radar.data.weather import WeatherData, WeatherFetcher
+from radar.data.cities import CityIndex
+from radar.themes.loader import ThemeData, apply_theme, load_theme, get_available_themes
+from radar.themes.watcher import ThemeWatcher
+from radar.ui.layout import LayoutManager
+from radar.ui.panels.earthquake import EarthquakePanel
+from radar.ui.panels.map import MapPanel
+from radar.ui.panels.status_bar import StatusBar
+from radar.ui.panels.weather import WeatherPanel
+from radar.ui.viewport import (
+    create_viewport,
+    destroy_viewport,
+    maximize_viewport,
+    setup_viewport,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# Message types for thread-safe queue
+class _EqUpdate:
+    def __init__(self, events: list[EarthquakeEvent], diff: EarthquakeDiff) -> None:
+        self.events = events
+        self.diff = diff
+
+
+class _WxUpdate:
+    def __init__(self, data: WeatherData) -> None:
+        self.data = data
+
+
+class _ThemeReload:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _LocationChange:
+    def __init__(self, lat: float, lon: float, name: str) -> None:
+        self.lat = lat
+        self.lon = lon
+        self.name = name
+
+
+class RadarApp:
+    """Main application class — ties everything together."""
+
+    def __init__(self, config: RadarConfig) -> None:
+        self._config = config
+        self._queue: Queue[Any] = Queue()
+        self._running = False
+        self._theme: ThemeData | None = None
+        self._active_theme_name: str = config.ui.theme
+
+        # City Index
+        logger.info("Loading city database...")
+        self._city_index = CityIndex()
+        # Load in background thread to not block startup if large (using thread for now)
+        # For simplicity in this version, we load it synchronously but it's fast (~200ms)
+        self._city_index.load()
+
+        # Data fetchers
+        self._eq_fetcher = EarthquakeFetcher(
+            feed_url=config.earthquake.feed_url,
+            max_display=config.earthquake.max_display,
+        )
+        self._wx_fetcher = WeatherFetcher(
+            latitude=config.weather.latitude,
+            longitude=config.weather.longitude,
+            units=config.general.units,
+        )
+
+        # UI panels (created during build)
+        self._eq_panel: EarthquakePanel | None = None
+        self._wx_panel: WeatherPanel | None = None
+        self._map_panel: MapPanel | None = None
+        self._status_bar: StatusBar | None = None
+
+        # Layout Manager
+        self._layout = LayoutManager(on_resize=self._on_layout_resize)
+
+        # Theme watcher
+        self._theme_watcher = ThemeWatcher(
+            THEMES_DIR, self._on_theme_file_changed
+        )
+
+        # Async loop
+        self._async_loop: asyncio.AbstractEventLoop | None = None
+        self._async_thread: threading.Thread | None = None
+
+    # Theme handling
+    def _load_initial_theme(self) -> ThemeData:
+        """Load the configured theme, falling back to obsidian."""
+        try:
+            return load_theme(self._config.ui.theme)
+        except FileNotFoundError:
+            logger.warning(
+                "Theme '%s' not found, falling back to obsidian", self._config.ui.theme
+            )
+            try:
+                return load_theme("obsidian")
+            except FileNotFoundError:
+                # Emergency fallback: create minimal theme in memory
+                logger.error("No themes found — using hardcoded fallback")
+                return ThemeData(name="Fallback", colors={
+                    "background": (13, 13, 13, 255),
+                    "surface": (26, 26, 46, 255),
+                    "primary": (0, 212, 255, 255),
+                    "accent": (255, 107, 53, 255),
+                    "text": (224, 224, 224, 255),
+                    "text_dim": (102, 102, 128, 255),
+                    "text_bright": (255, 255, 255, 255),
+                    "success": (0, 255, 136, 255),
+                    "warning": (255, 215, 0, 255),
+                    "danger": (255, 51, 102, 255),
+                    "border": (42, 42, 74, 255),
+                    "header": (15, 15, 30, 255),
+                    "row_even": (18, 18, 42, 255),
+                    "row_odd": (22, 22, 58, 255),
+                    "magnitude_low": (0, 255, 136, 255),
+                    "magnitude_mid": (255, 215, 0, 255),
+                    "magnitude_high": (255, 140, 0, 255),
+                    "magnitude_severe": (255, 51, 102, 255),
+                })
+
+    def _on_theme_file_changed(self, theme_name: str) -> None:
+        """Called by the file watcher when a theme file changes."""
+        if theme_name == self._active_theme_name:
+            self._queue.put(_ThemeReload(theme_name))
+
+    def _apply_theme_switch(self, theme_name: str) -> None:
+        """Switch to a different theme (called from UI thread)."""
+        try:
+            new_theme = load_theme(theme_name)
+            self._theme = new_theme
+            self._active_theme_name = theme_name
+            apply_theme(new_theme)
+
+            # Update all panels
+            if self._eq_panel:
+                self._eq_panel.update_theme(new_theme)
+            if self._wx_panel:
+                self._wx_panel.update_theme(new_theme)
+            if self._map_panel:
+                self._map_panel.update_theme(new_theme)
+            if self._status_bar:
+                self._status_bar.update_theme(new_theme)
+
+            logger.info("Switched to theme: %s", theme_name)
+        except Exception as e:
+            logger.error("Failed to switch theme to '%s': %s", theme_name, e)
+
+    # Async data fetching
+    def _start_async_loop(self) -> None:
+        """Start the async event loop in a background thread."""
+        self._async_loop = asyncio.new_event_loop()
+
+        def _run():
+            asyncio.set_event_loop(self._async_loop)
+            self._async_loop.run_until_complete(self._fetch_loop())
+
+        self._async_thread = threading.Thread(target=_run, daemon=True, name="radar-async")
+        self._async_thread.start()
+        logger.info("Background async loop started")
+
+    async def _fetch_loop(self) -> None:
+        """Main async loop — periodically fetches earthquake and weather data."""
+        eq_interval = self._config.earthquake.poll_interval
+        wx_interval = self._config.weather.poll_interval
+
+        last_eq = 0.0
+        last_wx = 0.0
+
+        while self._running:
+            now = time.monotonic()
+
+            # Earthquake fetch
+            if now - last_eq >= eq_interval:
+                try:
+                    events, diff = await self._eq_fetcher.fetch()
+                    self._queue.put(_EqUpdate(events, diff))
+                    last_eq = now
+                except Exception as e:
+                    logger.error("Earthquake fetch loop error: %s", e)
+
+            # Weather fetch
+            # Force update if last_fetch was reset (by location change)
+            if now - last_wx >= wx_interval or self._wx_fetcher._last_fetch == 0.0:
+                try:
+                    data = await self._wx_fetcher.fetch()
+                    if data:
+                        self._queue.put(_WxUpdate(data))
+                    last_wx = now
+                except Exception as e:
+                    logger.error("Weather fetch loop error: %s", e)
+
+            await asyncio.sleep(1.0)
+
+        # Cleanup
+        await self._eq_fetcher.close()
+        await self._wx_fetcher.close()
+
+    # UI building
+    def _build_ui(self) -> None:
+        """Create the main window layout with all panels."""
+        assert self._theme is not None
+
+        # Handle viewport resize events
+        # Moved inside build_ui to ensure window exists
+
+        with dpg.window(tag="primary_window", no_scrollbar=True):
+            # ── Panels ──
+            
+            # Earthquake Panel (Top Left)
+            with dpg.child_window(tag="eq_panel_container", border=False):
+                self._eq_panel = EarthquakePanel(
+                    self._theme,
+                    highlight_threshold=self._config.earthquake.highlight_threshold,
+                )
+                self._eq_panel.build(dpg.last_item())
+
+            # Weather Panel (Top Right)
+            with dpg.child_window(tag="wx_panel_container", border=False):
+                self._wx_panel = WeatherPanel(
+                    self._theme,
+                    city_index=self._city_index,
+                    location_name=self._config.weather.location_name,
+                    on_location_change=self._on_location_change,
+                )
+                self._wx_panel.build(dpg.last_item())
+
+            # Map Panel (Bottom)
+            with dpg.child_window(tag="map_panel_container", border=False):
+                self._map_panel = MapPanel(self._theme)
+                self._map_panel.build(dpg.last_item())
+
+            # Splitters
+            self._layout.draw_splitters("primary_window")
+
+            # Status bar
+            self._status_bar = StatusBar(
+                self._theme,
+                available_themes=get_available_themes(),
+                on_theme_change=lambda name: self._queue.put(_ThemeReload(name)),
+            )
+            self._status_bar.build("primary_window")
+
+        # Setup handlers now that window exists
+        self._layout.setup_handlers()
+
+        # Initial layout update
+        self._on_layout_resize()
+
+        dpg.set_primary_window("primary_window", True)
+
+    def _on_layout_resize(self) -> None:
+        """Called when viewport resizes or splitters move."""
+        # Update panel sizes based on layout manager
+        eq_w, eq_h = self._layout.get_eq_size()
+        wx_w, wx_h = self._layout.get_wx_size()
+        map_w, map_h = self._layout.get_map_size()
+        wx_x, wx_y = self._layout.get_wx_pos()
+        map_x, map_y = self._layout.get_map_pos()
+
+        dpg.configure_item("eq_panel_container", width=eq_w, height=eq_h, pos=(0, 0))
+        dpg.configure_item("wx_panel_container", width=wx_w, height=wx_h, pos=(wx_x, wx_y))
+        dpg.configure_item("map_panel_container", width=map_w, height=map_h, pos=(map_x, map_y))
+
+        # Notify map panel to redraw (it needs explicit resize)
+        if self._map_panel:
+            self._map_panel.resize(map_w, map_h)
+
+    def _on_location_change(self, lat: float, lon: float, name: str) -> None:
+        """Callback from weather panel when city is selected."""
+        self._queue.put(_LocationChange(lat, lon, name))
+
+    # Frame update callback
+    def _frame_update(self) -> None:
+        """Called every frame — processes queued updates and animations."""
+        # Process all queued messages
+        while True:
+            try:
+                msg = self._queue.get_nowait()
+            except Empty:
+                break
+
+            if isinstance(msg, _EqUpdate):
+                new_ids = [e.id for e in msg.diff.added] if msg.diff.added else None
+                if self._eq_panel:
+                    self._eq_panel.update(msg.events, new_ids)
+                if self._map_panel:
+                    self._map_panel.update(msg.events)
+                if self._status_bar:
+                    now = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                    self._status_bar.set_last_earthquake_update(now)
+                    self._status_bar.set_status(True)
+
+            elif isinstance(msg, _WxUpdate):
+                if self._wx_panel:
+                    self._wx_panel.update(msg.data)
+
+            elif isinstance(msg, _ThemeReload):
+                self._apply_theme_switch(msg.name)
+
+            elif isinstance(msg, _LocationChange):
+                logger.info("Changing location to: %s", msg.name)
+                # Update fetcher target
+                self._wx_fetcher.set_location(msg.lat, msg.lon)
+                # Update config in memory (optional: save to file?)
+                self._config.weather.latitude = msg.lat
+                self._config.weather.longitude = msg.lon
+                self._config.weather.location_name = msg.name
+                # Reset panel display (optional)
+                if self._wx_panel:
+                    self._wx_panel.set_location_name(msg.name)
+
+        # Update animations
+        if self._eq_panel:
+            self._eq_panel.update_highlights()
+
+        # Update clock and FPS
+        if self._status_bar:
+            self._status_bar.update_clock()
+            self._status_bar.update_fps(dpg.get_frame_rate())
+
+    # Public interface
+    def run(self) -> None:
+        """Launch the application."""
+        logger.info("Starting Radar...")
+
+        # 1. Create viewport
+        create_viewport(self._config)
+
+        # 2. Load and apply theme
+        self._theme = self._load_initial_theme()
+        apply_theme(self._theme)
+
+        # 3. Build UI
+        self._build_ui()
+
+        # 4. Finalize viewport
+        setup_viewport()
+
+        if self._config.ui.start_maximized:
+            maximize_viewport()
+
+        # 5. Start background data fetching
+        self._running = True
+        self._start_async_loop()
+
+        # 6. Start theme hot-reload watcher
+        self._theme_watcher.start()
+
+        # 7. Main render loop
+        logger.info("Radar is running — Ctrl+C to stop")
+        try:
+            while dpg.is_dearpygui_running():
+                self._frame_update()
+                dpg.render_dearpygui_frame()
+        except KeyboardInterrupt:
+            logger.info("Shutdown requested")
+        finally:
+            self._shutdown()
+
+    def _shutdown(self) -> None:
+        """Clean shutdown of all subsystems."""
+        logger.info("Shutting down...")
+        self._running = False
+
+        # Stop theme watcher
+        self._theme_watcher.stop()
+
+        # Stop async loop
+        if self._async_loop and self._async_loop.is_running():
+            self._async_loop.call_soon_threadsafe(self._async_loop.stop)
+
+        if self._async_thread:
+            self._async_thread.join(timeout=3.0)
+
+        # Destroy viewport
+        destroy_viewport()
+        logger.info("Radar stopped")

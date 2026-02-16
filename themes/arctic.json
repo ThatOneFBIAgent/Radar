@@ -1,0 +1,45 @@
+{
+    "name": "Arctic",
+    "description": "Cold, clean light theme — high contrast monitoring",
+    "colors": {
+        "background": "#F0F4F8",
+        "surface": "#FFFFFF",
+        "surface_alt": "#E8EDF2",
+        "primary": "#0066CC",
+        "accent": "#CC4400",
+        "text": "#1A1A2E",
+        "text_dim": "#6B7B8D",
+        "text_bright": "#000000",
+        "success": "#00875A",
+        "warning": "#CC8800",
+        "danger": "#CC0033",
+        "border": "#C0CCD8",
+        "border_focus": "#0066CC",
+        "scrollbar": "#C0CCD8",
+        "scrollbar_active": "#0066CC",
+        "header": "#E0E8F0",
+        "row_even": "#FFFFFF",
+        "row_odd": "#F5F8FA",
+        "highlight": "#0066CC18",
+        "magnitude_low": "#00875A",
+        "magnitude_mid": "#CC8800",
+        "magnitude_high": "#CC4400",
+        "magnitude_severe": "#CC0033"
+    },
+    "borders": {
+        "style": "thin",
+        "radius": 6,
+        "thickness": 1
+    },
+    "animation": {
+        "transition_ms": 250,
+        "fade_ms": 180,
+        "pulse_ms": 1400,
+        "highlight_decay_ms": 3500
+    },
+    "typography": {
+        "font_size": 15,
+        "line_spacing": 1.5,
+        "header_scale": 1.3
+    }
+}

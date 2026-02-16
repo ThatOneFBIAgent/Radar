@@ -1,0 +1,45 @@
+{
+    "name": "Phosphor",
+    "description": "Classic green-on-black CRT monitor aesthetic",
+    "colors": {
+        "background": "#0A0A0A",
+        "surface": "#0D1A0D",
+        "surface_alt": "#0F200F",
+        "primary": "#33FF66",
+        "accent": "#66FFAA",
+        "text": "#33FF66",
+        "text_dim": "#1A8033",
+        "text_bright": "#99FFBB",
+        "success": "#33FF66",
+        "warning": "#CCFF33",
+        "danger": "#FF3333",
+        "border": "#1A4D1A",
+        "border_focus": "#33FF66",
+        "scrollbar": "#1A331A",
+        "scrollbar_active": "#33FF66",
+        "header": "#081408",
+        "row_even": "#0A160A",
+        "row_odd": "#0D1C0D",
+        "highlight": "#33FF6622",
+        "magnitude_low": "#33FF66",
+        "magnitude_mid": "#CCFF33",
+        "magnitude_high": "#FFAA33",
+        "magnitude_severe": "#FF3333"
+    },
+    "borders": {
+        "style": "thin",
+        "radius": 0,
+        "thickness": 1
+    },
+    "animation": {
+        "transition_ms": 100,
+        "fade_ms": 80,
+        "pulse_ms": 800,
+        "highlight_decay_ms": 2000
+    },
+    "typography": {
+        "font_size": 14,
+        "line_spacing": 1.3,
+        "header_scale": 1.2
+    }
+}

@@ -1,0 +1,45 @@
+{
+    "name": "Ember",
+    "description": "Warm amber tones — vintage instrumentation feel",
+    "colors": {
+        "background": "#1A0E08",
+        "surface": "#2A1810",
+        "surface_alt": "#332018",
+        "primary": "#FF9933",
+        "accent": "#FFCC66",
+        "text": "#FFDDAA",
+        "text_dim": "#996633",
+        "text_bright": "#FFEEDD",
+        "success": "#88CC44",
+        "warning": "#FFCC33",
+        "danger": "#FF4444",
+        "border": "#4D3322",
+        "border_focus": "#FF9933",
+        "scrollbar": "#3D2818",
+        "scrollbar_active": "#FF9933",
+        "header": "#1A0E06",
+        "row_even": "#201208",
+        "row_odd": "#28180C",
+        "highlight": "#FF993322",
+        "magnitude_low": "#88CC44",
+        "magnitude_mid": "#FFCC33",
+        "magnitude_high": "#FF9933",
+        "magnitude_severe": "#FF4444"
+    },
+    "borders": {
+        "style": "thin",
+        "radius": 2,
+        "thickness": 1
+    },
+    "animation": {
+        "transition_ms": 180,
+        "fade_ms": 120,
+        "pulse_ms": 1000,
+        "highlight_decay_ms": 2500
+    },
+    "typography": {
+        "font_size": 15,
+        "line_spacing": 1.4,
+        "header_scale": 1.25
+    }
+}

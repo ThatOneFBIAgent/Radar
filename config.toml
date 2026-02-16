@@ -1,0 +1,64 @@
+# ╔══════════════════════════════════════════════════════════╗
+# ║                RADAR — Configuration                    ║
+# ╠══════════════════════════════════════════════════════════╣
+# ║  Edit this file to customize application behavior.      ║
+# ║  Restart the application after changes (except themes). ║
+# ╚══════════════════════════════════════════════════════════╝
+
+[general]
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level = "DEBUG"
+
+# Unit system: "metric" or "imperial"
+units = "metric"
+
+[earthquake]
+# USGS GeoJSON feed URL
+# Options:
+#   all_hour, all_day, all_week, all_month
+#   1.0_hour, 1.0_day, 1.0_week, 1.0_month
+#   2.5_hour, 2.5_day, 2.5_week, 2.5_month
+#   4.5_hour, 4.5_day, 4.5_week, 4.5_month
+#   significant_hour, significant_day, significant_week, significant_month
+feed = "all_hour"
+
+# Polling interval in seconds (minimum 30)
+poll_interval = 60
+
+# Magnitude threshold for highlighting (events >= this flash)
+highlight_threshold = 4.5
+
+# Maximum events to display in the list
+max_display = 100
+
+[weather]
+# Location coordinates (default: Houston, TX)
+latitude = 17.9689
+longitude = -92.9576
+location_name = "Tabasco, Mexico"
+
+# Polling interval in seconds (minimum 60)
+poll_interval = 120
+
+# Show forecast panel (requires zoom into region)
+show_forecast = false
+
+[ui]
+# Active theme filename (without .json extension)
+theme = "obsidian"
+
+# Font size in pixels
+font_size = 15
+
+# Window dimensions (0 = auto)
+window_width = 1400
+window_height = 900
+
+# Start maximized
+start_maximized = false
+
+# Enable animations
+animations = true
+
+# Animation speed multiplier (0.5 = slow, 2.0 = fast)
+animation_speed = 1.0
