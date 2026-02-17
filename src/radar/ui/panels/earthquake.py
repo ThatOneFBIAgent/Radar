@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import math
 import dearpygui.dearpygui as dpg
 
 from radar.ui.animations import Highlighter, lerp_color
@@ -35,9 +36,31 @@ class EarthquakePanel:
         self._events: list[EarthquakeEvent] = []
         self._table_tag: int | str | None = None
         self._container_tag: int | str | None = None
-        self._header_tag: int | str | None = None
         self._count_tag: int | str | None = None
         self._row_tags: list[int | str] = []
+        self._user_lat: float | None = None
+        self._user_lon: float | None = None
+        self._highlight_theme: int | str | None = None
+
+    def set_user_location(self, lat: float, lon: float) -> None:
+        """Update the reference location for distance calculations."""
+        self._user_lat = lat
+        self._user_lon = lon
+
+    def _haversine(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Calculate the great circle distance in kilometers between two points."""
+        R = 6371.0  # Earth radius in kilometers
+
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(math.radians(lat1))
+            * math.cos(math.radians(lat2))
+            * math.sin(dlon / 2) ** 2
+        )
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return R * c
 
     def _mag_color(self, magnitude: float) -> tuple[int, int, int, int]:
         """Get the color for a given magnitude."""
@@ -51,13 +74,20 @@ class EarthquakePanel:
 
     def build(self, parent: int | str) -> None:
         """Create the earthquake panel UI layout."""
+        # Create highlight theme
+        with dpg.theme() as self._highlight_theme:
+            with dpg.theme_component(dpg.mvTableRow):
+                # Use a subtle highlight color (e.g., semi-transparent blueish/white)
+                # Or derive from theme if possible. using a hardcoded safe color for now.
+                dpg.add_theme_color(dpg.mvThemeCol_TableRowBg, (100, 100, 120, 100))
+
         with dpg.child_window(parent=parent, border=True) as container:
             self._container_tag = container
 
             # Header
             with dpg.group(horizontal=True):
                 header_font = get_header_font()
-                self._header_tag = dpg.add_text("⚡ SEISMIC MONITOR")
+                self._header_tag = dpg.add_text("[MON] SEISMIC MONITOR")
                 if header_font:
                     dpg.bind_item_font(self._header_tag, header_font)
 
@@ -78,16 +108,59 @@ class EarthquakePanel:
                 sortable=True,
                 scrollY=True,
                 policy=dpg.mvTable_SizingStretchProp,
+                callback=self._sort_callback, # Added callback for sorting
             ) as table:
                 self._table_tag = table
 
-                dpg.add_table_column(label="MAG", init_width_or_weight=0.08)
-                dpg.add_table_column(label="DEPTH", init_width_or_weight=0.08)
-                dpg.add_table_column(label="LOCATION", init_width_or_weight=0.35)
-                dpg.add_table_column(label="TIME (UTC)", init_width_or_weight=0.20)
-                dpg.add_table_column(label="COORDINATES", init_width_or_weight=0.20)
-                dpg.add_table_column(label="TYPE", init_width_or_weight=0.09)
+                self._col_tags = {}
+                self._col_tags["MAG"] = dpg.add_table_column(label="MAG", init_width_or_weight=0.08)
+                self._col_tags["DEPTH"] = dpg.add_table_column(label="DEPTH", init_width_or_weight=0.08)
+                self._col_tags["LOCATION"] = dpg.add_table_column(label="LOCATION", init_width_or_weight=0.35)
+                self._col_tags["TIME"] = dpg.add_table_column(label="TIME (UTC)", init_width_or_weight=0.20)
+                self._col_tags["DISTANCE"] = dpg.add_table_column(label="DIST", init_width_or_weight=0.10)
+                self._col_tags["COORDINATES"] = dpg.add_table_column(label="COORDINATES", init_width_or_weight=0.20)
+                self._col_tags["TYPE"] = dpg.add_table_column(label="TYPE", init_width_or_weight=0.09)
 
+    def _sort_callback(self, sender: int | str, sort_specs: dict | list) -> None:
+        """Handle table sort events."""
+        if sort_specs is None:
+            return
+
+        specs = sort_specs
+        if isinstance(sort_specs, dict):
+             specs = sort_specs.get("specs")
+        
+        if not specs:
+            return
+
+        # Get the first sort spec (single column sort for now)
+        col_id = specs[0][0]
+        direction = specs[0][1] # 1 is asc, -1 is desc
+        
+        # Helper for distance sort
+        def dist_sort(e: EarthquakeEvent) -> float:
+            if self._user_lat is None or self._user_lon is None:
+                return float('inf')
+            return self._haversine(self._user_lat, self._user_lon, e.latitude, e.longitude)
+
+        # Sort key map
+        key_map = {
+            self._col_tags["MAG"]: lambda e: e.magnitude,
+            self._col_tags["DEPTH"]: lambda e: e.depth,
+            self._col_tags["LOCATION"]: lambda e: e.place,
+            self._col_tags["TIME"]: lambda e: e.time,
+            self._col_tags["DISTANCE"]: dist_sort,
+            self._col_tags["COORDINATES"]: lambda e: e.latitude, # Rough sort by lat?
+            self._col_tags["TYPE"]: lambda e: e.mag_type if e.mag_type else "",
+        }
+
+        sort_key = key_map.get(col_id)
+        if sort_key:
+            reverse = direction < 0
+            self._events.sort(key=sort_key, reverse=reverse)
+            # Re-render table
+            self.update(self._events)
+            
     def update(self, events: list[EarthquakeEvent], new_ids: list[str] | None = None) -> None:
         """Refresh the table with new event data."""
         self._events = events
@@ -96,29 +169,38 @@ class EarthquakePanel:
             self._highlighter.add_many(new_ids)
 
         # Clear existing rows
+        # Clear existing rows
         if self._table_tag is not None:
-            for tag in self._row_tags:
+             # Safely delete tracked rows
+             for tag in self._row_tags:
                 try:
-                    dpg.delete_item(tag)
+                    if dpg.does_item_exist(tag):
+                        dpg.delete_item(tag)
                 except Exception:
-                    pass
+                    pass # Ignore deletion errors
+
         self._row_tags.clear()
+        self._row_map: dict[str, int | str] = {}
 
         # Populate rows
         for event in events:
+            # Use user_data to store event ID or store in map
             with dpg.table_row(parent=self._table_tag) as row:
                 self._row_tags.append(row)
+                self._row_map[event.id] = row
 
                 mag_color = self._mag_color(event.magnitude)
                 is_significant = event.magnitude >= self._threshold
 
-                # Magnitude
-                mag_text = f" {event.magnitude:5.1f} " if event.magnitude >= 0 else f"{event.magnitude:5.1f} "
-                tag = dpg.add_text(mag_text, color=mag_color)
-                if is_significant:
-                    dpg.add_text("▲", color=self._theme.color("danger"), before=tag)
+                # Magnitude Column
+                with dpg.group(horizontal=True):
+                    if is_significant:
+                        dpg.add_text("!", color=self._theme.color("danger"))
+                    
+                    mag_text = f"{event.magnitude:4.1f}" if event.magnitude >= 0 else f"{event.magnitude:4.1f}"
+                    dpg.add_text(mag_text, color=mag_color)
 
-                # Depth
+                # Depth Column
                 dpg.add_text(f"{event.depth:.1f} km", color=self._theme.color("text"))
 
                 # Location
@@ -129,6 +211,13 @@ class EarthquakePanel:
 
                 # Time
                 dpg.add_text(event.time_str, color=self._theme.color("text_dim"))
+                
+                # Distance Column
+                dist_str = "—"
+                if self._user_lat is not None and self._user_lon is not None:
+                    km = self._haversine(self._user_lat, self._user_lon, event.latitude, event.longitude)
+                    dist_str = f"{km:.0f} km"
+                dpg.add_text(dist_str, color=self._theme.color("text_dim"))
 
                 # Coordinates
                 dpg.add_text(event.coords_str, color=self._theme.color("text_dim"))
@@ -142,6 +231,28 @@ class EarthquakePanel:
         # Update count
         if self._count_tag:
             dpg.set_value(self._count_tag, f"{len(events)} events")
+
+    def highlight_event(self, event_id: str) -> None:
+        """Highlight (select) a specific event row."""
+        if not self._highlight_theme:
+            return
+
+        # Deselect all
+        for tag in self._row_tags:
+            if dpg.does_item_exist(tag):
+                # Reset theme to default (0)
+                dpg.bind_item_theme(tag, 0)
+        
+        # Select target
+        row = self._row_map.get(event_id)
+        if row and dpg.does_item_exist(row):
+            dpg.bind_item_theme(row, self._highlight_theme)
+            
+            # Auto-scroll to row (approximate)
+            # DPG doesn't have a direct "scroll to item" for tables easily accessible
+            # without calculating pixel logic, but `set_y_scroll` on the child window *might* work
+            # if we knew the offset. For now, selection visualization is a good start.
+
 
     def update_highlights(self) -> None:
         """Update highlight animations (call each frame)."""

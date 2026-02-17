@@ -103,8 +103,10 @@ class LayoutManager:
 
     def _handle_viewport_resize(self, sender: int | str, app_data: Any) -> None:
         """Update internal dimensions on window resize."""
+        # Reserve a small safety buffer to prevent scrollbars from triggering
+        # if content touches the exact edge of the viewport.
         self._width = dpg.get_viewport_width()
-        self._height = dpg.get_viewport_height()
+        self._height = dpg.get_viewport_height() - 40  # 40px safety margin to ensure status bar is visible
         self._update_splitter_positions()
         self._on_resize()
 
@@ -145,6 +147,10 @@ class LayoutManager:
             y_pos = int(self._height * self._split_y)
             dpg.configure_item(self.split_x_tag, height=y_pos, pos=(x_pos - 4, 0))
 
+    def get_total_size(self) -> tuple[int, int]:
+        """Return the total viewport (width, height)."""
+        return self._width, self._height
+
     # Geometry Getters
 
     def get_eq_size(self) -> tuple[int, int]:
@@ -163,7 +169,7 @@ class LayoutManager:
     def get_map_size(self) -> tuple[int, int]:
         """Return (width, height) for map panel."""
         start_y = int(self._height * self._split_y) + 4
-        h = self._height - start_y - 30  # -30 for status bar
+        h = self._height - start_y - 36  # -32 for status bar + 4px safety gap
         return self._width, max(1, h)
 
     def get_wx_pos(self) -> tuple[int, int]:

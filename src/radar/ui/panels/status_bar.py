@@ -43,10 +43,10 @@ class StatusBar:
             with dpg.group(horizontal=True):
                 # Connection indicator
                 self._tags["status"] = dpg.add_text(
-                    "● ONLINE", color=self._theme.color("success")
+                    "(*) ONLINE", color=self._theme.color("success")
                 )
 
-                dpg.add_text(" │ ", color=self._theme.color("border"))
+                dpg.add_text(" | ", color=self._theme.color("border"))
 
                 # Last update
                 dpg.add_text("LAST:", color=self._theme.color("text_dim"))
@@ -54,7 +54,7 @@ class StatusBar:
                     "—", color=self._theme.color("text")
                 )
 
-                dpg.add_text(" │ ", color=self._theme.color("border"))
+                dpg.add_text(" | ", color=self._theme.color("border"))
 
                 # UTC Clock
                 dpg.add_text("UTC:", color=self._theme.color("text_dim"))
@@ -62,7 +62,7 @@ class StatusBar:
                     "00:00:00", color=self._theme.color("primary")
                 )
 
-                dpg.add_text(" │ ", color=self._theme.color("border"))
+                dpg.add_text(" | ", color=self._theme.color("border"))
 
                 # Active theme
                 dpg.add_text("THEME:", color=self._theme.color("text_dim"))
@@ -81,7 +81,7 @@ class StatusBar:
                         callback=self._theme_changed,
                     )
 
-                dpg.add_text(" │ ", color=self._theme.color("border"))
+                dpg.add_text(" | ", color=self._theme.color("border"))
 
                 # FPS
                 dpg.add_text("FPS:", color=self._theme.color("text_dim"))
@@ -114,10 +114,10 @@ class StatusBar:
         """Set connection status indicator."""
         if "status" in self._tags:
             if online:
-                dpg.set_value(self._tags["status"], "● ONLINE")
+                dpg.set_value(self._tags["status"], "(*) ONLINE")
                 dpg.configure_item(self._tags["status"], color=self._theme.color("success"))
             else:
-                dpg.set_value(self._tags["status"], "● OFFLINE")
+                dpg.set_value(self._tags["status"], "(*) OFFLINE")
                 dpg.configure_item(self._tags["status"], color=self._theme.color("danger"))
 
     def update_theme(self, theme: ThemeData) -> None:

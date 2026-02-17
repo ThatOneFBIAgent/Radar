@@ -107,6 +107,7 @@ class RadarApp:
         # Async loop
         self._async_loop: asyncio.AbstractEventLoop | None = None
         self._async_thread: threading.Thread | None = None
+        self._stop_event: asyncio.Event | None = None
 
     # Theme handling
     def _load_initial_theme(self) -> ThemeData:
@@ -174,10 +175,17 @@ class RadarApp:
     def _start_async_loop(self) -> None:
         """Start the async event loop in a background thread."""
         self._async_loop = asyncio.new_event_loop()
+        self._stop_event = asyncio.Event()
 
         def _run():
             asyncio.set_event_loop(self._async_loop)
-            self._async_loop.run_until_complete(self._fetch_loop())
+            try:
+                self._async_loop.run_until_complete(self._fetch_loop())
+            except Exception as e:
+                logger.error("Async loop error: %s", e)
+            finally:
+                # Ensure loop is closed only after run_until_complete returns
+                self._async_loop.close()
 
         self._async_thread = threading.Thread(target=_run, daemon=True, name="radar-async")
         self._async_thread.start()
@@ -191,34 +199,39 @@ class RadarApp:
         last_eq = 0.0
         last_wx = 0.0
 
-        while self._running:
-            now = time.monotonic()
+        try:
+            while self._running:
+                now = time.monotonic()
 
-            # Earthquake fetch
-            if now - last_eq >= eq_interval:
+                # Earthquake fetch
+                if now - last_eq >= eq_interval:
+                    try:
+                        events, diff = await self._eq_fetcher.fetch()
+                        self._queue.put(_EqUpdate(events, diff))
+                        last_eq = now
+                    except Exception as e:
+                        logger.error("Earthquake fetch loop error: %s", e)
+
+                # Weather fetch
+                if now - last_wx >= wx_interval or self._wx_fetcher._last_fetch == 0.0:
+                    try:
+                        data = await self._wx_fetcher.fetch()
+                        if data:
+                            self._queue.put(_WxUpdate(data))
+                        last_wx = now
+                    except Exception as e:
+                        logger.error("Weather fetch loop error: %s", e)
+
+                # Interruption-aware sleep using Event
                 try:
-                    events, diff = await self._eq_fetcher.fetch()
-                    self._queue.put(_EqUpdate(events, diff))
-                    last_eq = now
-                except Exception as e:
-                    logger.error("Earthquake fetch loop error: %s", e)
-
-            # Weather fetch
-            # Force update if last_fetch was reset (by location change)
-            if now - last_wx >= wx_interval or self._wx_fetcher._last_fetch == 0.0:
-                try:
-                    data = await self._wx_fetcher.fetch()
-                    if data:
-                        self._queue.put(_WxUpdate(data))
-                    last_wx = now
-                except Exception as e:
-                    logger.error("Weather fetch loop error: %s", e)
-
-            await asyncio.sleep(1.0)
-
-        # Cleanup
-        await self._eq_fetcher.close()
-        await self._wx_fetcher.close()
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=1.0)
+                except (asyncio.TimeoutError, TimeoutError):
+                    pass
+        finally:
+            logger.info("Closing data fetchers...")
+            await self._eq_fetcher.close()
+            await self._wx_fetcher.close()
+            logger.debug("Fetchers closed")
 
     # UI building
     def _build_ui(self) -> None:
@@ -228,19 +241,34 @@ class RadarApp:
         # Handle viewport resize events
         # Moved inside build_ui to ensure window exists
 
-        with dpg.window(tag="primary_window", no_scrollbar=True):
+        # Custom theme for primary window to remove padding
+        with dpg.theme() as layout_theme:
+            with dpg.theme_component(dpg.mvAll):
+                dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0)
+                dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 0, 0)
+                dpg.add_theme_style(dpg.mvStyleVar_ScrollbarSize, 0)  # Hide scrollbars visually
+
+        with dpg.window(tag="primary_window", no_scrollbar=True, no_scroll_with_mouse=True):
+            dpg.bind_item_theme(dpg.last_item(), layout_theme)
             # ── Panels ──
             
             # Earthquake Panel (Top Left)
             with dpg.child_window(tag="eq_panel_container", border=False):
+                dpg.bind_item_theme(dpg.last_item(), layout_theme)
                 self._eq_panel = EarthquakePanel(
                     self._theme,
                     highlight_threshold=self._config.earthquake.highlight_threshold,
+                )
+                # Set initial user location for distance sorting
+                self._eq_panel.set_user_location(
+                    self._config.weather.latitude,
+                    self._config.weather.longitude
                 )
                 self._eq_panel.build(dpg.last_item())
 
             # Weather Panel (Top Right)
             with dpg.child_window(tag="wx_panel_container", border=False):
+                dpg.bind_item_theme(dpg.last_item(), layout_theme)
                 self._wx_panel = WeatherPanel(
                     self._theme,
                     city_index=self._city_index,
@@ -251,19 +279,27 @@ class RadarApp:
 
             # Map Panel (Bottom)
             with dpg.child_window(tag="map_panel_container", border=False):
-                self._map_panel = MapPanel(self._theme)
+                dpg.bind_item_theme(dpg.last_item(), layout_theme)
+                
+                def _on_map_hover(event_id: str) -> None:
+                    if self._eq_panel:
+                        self._eq_panel.highlight_event(event_id)
+                
+                self._map_panel = MapPanel(self._theme, on_hover=_on_map_hover)
                 self._map_panel.build(dpg.last_item())
 
             # Splitters
             self._layout.draw_splitters("primary_window")
 
             # Status bar
-            self._status_bar = StatusBar(
-                self._theme,
-                available_themes=get_available_themes(),
-                on_theme_change=lambda name: self._queue.put(_ThemeReload(name)),
-            )
-            self._status_bar.build("primary_window")
+            with dpg.child_window(tag="status_bar_container", border=False, no_scrollbar=True):
+                dpg.bind_item_theme(dpg.last_item(), layout_theme)
+                self._status_bar = StatusBar(
+                    self._theme,
+                    available_themes=get_available_themes(),
+                    on_theme_change=lambda name: self._queue.put(_ThemeReload(name)),
+                )
+                self._status_bar.build(dpg.last_item())
 
         # Setup handlers now that window exists
         self._layout.setup_handlers()
@@ -281,10 +317,16 @@ class RadarApp:
         map_w, map_h = self._layout.get_map_size()
         wx_x, wx_y = self._layout.get_wx_pos()
         map_x, map_y = self._layout.get_map_pos()
+        
+        total_w, total_h = self._layout.get_total_size()
 
         dpg.configure_item("eq_panel_container", width=eq_w, height=eq_h, pos=(0, 0))
         dpg.configure_item("wx_panel_container", width=wx_w, height=wx_h, pos=(wx_x, wx_y))
         dpg.configure_item("map_panel_container", width=map_w, height=map_h, pos=(map_x, map_y))
+        
+        # Position status bar at the very bottom
+        if dpg.does_item_exist("status_bar_container"):
+            dpg.configure_item("status_bar_container", width=total_w, height=32, pos=(0, total_h - 32))
 
         # Notify map panel to redraw (it needs explicit resize)
         if self._map_panel:
@@ -330,6 +372,11 @@ class RadarApp:
                 self._config.weather.latitude = msg.lat
                 self._config.weather.longitude = msg.lon
                 self._config.weather.location_name = msg.name
+                
+                # Update Earthquake Panel location
+                if self._eq_panel:
+                    self._eq_panel.set_user_location(msg.lat, msg.lon)
+
                 # Reset panel display (optional)
                 if self._wx_panel:
                     self._wx_panel.set_location_name(msg.name)
@@ -390,9 +437,9 @@ class RadarApp:
         # Stop theme watcher
         self._theme_watcher.stop()
 
-        # Stop async loop
-        if self._async_loop and self._async_loop.is_running():
-            self._async_loop.call_soon_threadsafe(self._async_loop.stop)
+        # Stop async loop gracefully via event
+        if self._async_loop and self._stop_event:
+            self._async_loop.call_soon_threadsafe(self._stop_event.set)
 
         if self._async_thread:
             self._async_thread.join(timeout=3.0)

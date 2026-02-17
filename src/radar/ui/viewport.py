@@ -63,7 +63,7 @@ def create_viewport(config: RadarConfig) -> None:
     height = config.ui.window_height or 900
 
     dpg.create_viewport(
-        title="RADAR — Seismic & Weather Monitor",
+        title="RADAR - Seismic & Weather Monitor",
         width=width,
         height=height,
         min_width=900,
@@ -72,6 +72,20 @@ def create_viewport(config: RadarConfig) -> None:
     )
 
     _setup_fonts(config.ui.font_size, 1.3)
+    
+    # Icon setup
+    icon_path = Path("assets/icon.png")
+    if not icon_path.exists():
+        icon_path = Path("assets/icon.ico")
+    
+    if icon_path.exists():
+        try:
+            dpg.set_viewport_small_icon(str(icon_path))
+            dpg.set_viewport_large_icon(str(icon_path))
+            logger.info("Loaded window icon: %s", icon_path)
+        except Exception as e:
+            logger.warning("Failed to set window icon: %s", e)
+
     logger.info("Viewport created: %dx%d", width, height)
 
 

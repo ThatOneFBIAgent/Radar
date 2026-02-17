@@ -97,7 +97,7 @@ class WeatherPanel:
             # Header
             with dpg.group(horizontal=True):
                 header_font = get_header_font()
-                header = dpg.add_text("🌤 WEATHER STATION")
+                header = dpg.add_text("[WXA] WEATHER STATION")
                 if header_font:
                     dpg.bind_item_font(header, header_font)
                 dpg.add_spacer(width=-1)
@@ -256,7 +256,7 @@ class WeatherPanel:
             f"{data.precipitation:.1f} {'in' if data.units == 'imperial' else 'mm'}",
         )
         dpg.set_value(self._tags["elevation"], f"{data.elevation:.0f} m")
-        dpg.set_value(self._tags["daynight"], "☀ Day" if data.is_day else "🌙 Night")
+        dpg.set_value(self._tags["daynight"], "DAY" if data.is_day else "NGHT")
 
         # Update compass
         self._draw_compass(data.wind_direction)
