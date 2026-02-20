@@ -20,7 +20,7 @@ units = "metric"
 #   2.5_hour, 2.5_day, 2.5_week, 2.5_month
 #   4.5_hour, 4.5_day, 4.5_week, 4.5_month
 #   significant_hour, significant_day, significant_week, significant_month
-feed = "all_hour"
+feed = "2.5_month"
 
 # Polling interval in seconds (minimum 30)
 poll_interval = 60
@@ -44,7 +44,7 @@ poll_interval = 120
 show_forecast = false
 
 [ui]
-# Active theme filename (without .json extension)
+# Active/default theme filename when opening (without .json extension)
 theme = "obsidian"
 
 # Font size in pixels

@@ -104,8 +104,8 @@ class RadarConfig(BaseModel):
 def load_config(path: Path | None = None) -> RadarConfig:
     """Load and validate configuration from a TOML file.
 
-    Falls back to defaults for any missing fields. If the file
-    doesn't exist, returns a fully-default config.
+    Validates top-level sections individually to be resilient against
+    partial configuration errors.
     """
     config_path = path or DEFAULT_CONFIG_PATH
 
@@ -116,11 +116,36 @@ def load_config(path: Path | None = None) -> RadarConfig:
     try:
         with open(config_path, "rb") as f:
             raw = tomllib.load(f)
-        logger.info("Loaded config from %s", config_path)
-        return RadarConfig(**raw)
+        logger.info("Loaded config file from %s", config_path)
     except tomllib.TOMLDecodeError as e:
-        logger.error("Invalid TOML in %s: %s — using defaults", config_path, e)
+        logger.error("Invalid TOML in %s: %s — using all defaults", config_path, e)
         return RadarConfig()
     except Exception as e:
-        logger.error("Config validation error: %s — using defaults", e)
+        logger.error("Failed to read config file %s: %s — using all defaults", config_path, e)
         return RadarConfig()
+
+    # Create a default config as a base
+    final_config = RadarConfig()
+
+    # Validate each section individually for resilience
+    sections = {
+        "general": GeneralConfig,
+        "earthquake": EarthquakeConfig,
+        "weather": WeatherConfig,
+        "ui": UIConfig
+    }
+
+    for key, model in sections.items():
+        if key in raw and isinstance(raw[key], dict):
+            try:
+                setattr(final_config, key, model(**raw[key]))
+                logger.debug("Validated config section: [%s]", key)
+            except Exception as e:
+                logger.warning(
+                    "Invalid [%s] section in config — keeping defaults for this section. Error: %s",
+                    key, e
+                )
+        elif key in raw:
+            logger.warning("Config section [%s] must be a table — keeping defaults", key)
+
+    return final_config

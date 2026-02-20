@@ -275,9 +275,24 @@ class WeatherPanel:
             color = self._theme.color("danger")
         dpg.configure_item(self._tags["temp"], color=color)
 
-    def update_theme(self, theme: ThemeData) -> None:
+    def update_theme(self, theme: ThemeData, soft: bool = False) -> None:
         """Apply a new theme to the panel."""
         self._theme = theme
-        if self._data:
+        if self._data and not soft:
             self.update(self._data)
+        elif self._data and soft:
+            # Re-apply color logic for temperature specifically 
+            temp_c = self._data.temperature if self._data.units == "metric" else (self._data.temperature - 32) * 5 / 9
+            if temp_c < 0:
+                color = (100, 150, 255, 255)
+            elif temp_c < 15:
+                color = (100, 200, 255, 255)
+            elif temp_c < 25:
+                color = self._theme.color("success")
+            elif temp_c < 35:
+                color = self._theme.color("warning")
+            else:
+                color = self._theme.color("danger")
+            if "temp" in self._tags and dpg.does_item_exist(self._tags["temp"]):
+                dpg.configure_item(self._tags["temp"], color=color)
 

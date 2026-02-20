@@ -120,6 +120,15 @@ class StatusBar:
                 dpg.set_value(self._tags["status"], "(*) OFFLINE")
                 dpg.configure_item(self._tags["status"], color=self._theme.color("danger"))
 
-    def update_theme(self, theme: ThemeData) -> None:
+    def update_theme(self, theme: ThemeData, soft: bool = False) -> None:
         """Apply a new theme to the status bar."""
         self._theme = theme
+
+        # Update static colors
+        if self._tags.get("theme_combo") and dpg.does_item_exist(self._tags["theme_combo"]):
+             pass # Combo colors handled globally by theme
+
+        if "status" in self._tags and dpg.does_item_exist(self._tags["status"]):
+            current = dpg.get_value(self._tags["status"])
+            color = self._theme.color("success") if "ONLINE" in str(current) else self._theme.color("danger")
+            dpg.configure_item(self._tags["status"], color=color)

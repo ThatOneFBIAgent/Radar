@@ -9,9 +9,10 @@
  */
 
 #include "radar_signal.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
 
 /*
  * Exponential Moving Average (EMA) smoothing.
@@ -25,19 +26,21 @@
  * @param alpha  Smoothing factor (0.0 → max smooth, 1.0 → no smoothing)
  * @param out    Output array (must be pre-allocated, same length as data)
  */
-void ema_smooth(const double* data, int len, double alpha, double* out) {
-    if (len <= 0 || data == NULL || out == NULL) {
-        return;
-    }
+void ema_smooth(const double *data, int len, double alpha, double *out) {
+  if (len <= 0 || data == NULL || out == NULL) {
+    return;
+  }
 
-    /* Clamp alpha to valid range */
-    if (alpha < 0.0) alpha = 0.0;
-    if (alpha > 1.0) alpha = 1.0;
+  /* Clamp alpha to valid range */
+  if (alpha < 0.0)
+    alpha = 0.0;
+  if (alpha > 1.0)
+    alpha = 1.0;
 
-    out[0] = data[0];
-    for (int i = 1; i < len; i++) {
-        out[i] = alpha * data[i] + (1.0 - alpha) * out[i - 1];
-    }
+  out[0] = data[0];
+  for (int i = 1; i < len; i++) {
+    out[i] = alpha * data[i] + (1.0 - alpha) * out[i - 1];
+  }
 }
 
 /*
@@ -48,28 +51,29 @@ void ema_smooth(const double* data, int len, double alpha, double* out) {
  * @param window    Window size for averaging
  * @param out       Output array (pre-allocated)
  */
-void wma_smooth(const double* data, int len, int window, double* out) {
-    if (len <= 0 || window <= 0 || data == NULL || out == NULL) {
-        return;
+void wma_smooth(const double *data, int len, int window, double *out) {
+  if (len <= 0 || window <= 0 || data == NULL || out == NULL) {
+    return;
+  }
+
+  if (window > len)
+    window = len;
+
+  double weight_sum = (double)(window * (window + 1)) / 2.0;
+
+  for (int i = 0; i < len; i++) {
+    double weighted = 0.0;
+    double w_total = 0.0;
+    int start = (i - window + 1 > 0) ? i - window + 1 : 0;
+
+    for (int j = start; j <= i; j++) {
+      double w = (double)(j - start + 1);
+      weighted += data[j] * w;
+      w_total += w;
     }
 
-    if (window > len) window = len;
-
-    double weight_sum = (double)(window * (window + 1)) / 2.0;
-
-    for (int i = 0; i < len; i++) {
-        double weighted = 0.0;
-        double w_total = 0.0;
-        int start = (i - window + 1 > 0) ? i - window + 1 : 0;
-
-        for (int j = start; j <= i; j++) {
-            double w = (double)(j - start + 1);
-            weighted += data[j] * w;
-            w_total += w;
-        }
-
-        out[i] = weighted / w_total;
-    }
+    out[i] = weighted / w_total;
+  }
 }
 
 /*
@@ -82,15 +86,13 @@ void wma_smooth(const double* data, int len, int window, double* out) {
  * @param len       Length of arrays
  * @param out       Output magnitude array (pre-allocated)
  */
-void compute_magnitude(
-    const double* x, const double* y, const double* z,
-    int len, double* out
-) {
-    if (len <= 0 || x == NULL || y == NULL || z == NULL || out == NULL) {
-        return;
-    }
+void compute_magnitude(const double *x, const double *y, const double *z,
+                       int len, double *out) {
+  if (len <= 0 || x == NULL || y == NULL || z == NULL || out == NULL) {
+    return;
+  }
 
-    for (int i = 0; i < len; i++) {
-        out[i] = sqrt(x[i] * x[i] + y[i] * y[i] + z[i] * z[i]);
-    }
+  for (int i = 0; i < len; i++) {
+    out[i] = sqrt(x[i] * x[i] + y[i] * y[i] + z[i] * z[i]);
+  }
 }

@@ -32,9 +32,21 @@ def _setup_fonts(font_size: int, header_scale: float) -> None:
         _font_registry_tag = reg
 
         if font_path.exists():
+            # Create fonts and load character ranges
             _default_font_tag = dpg.add_font(str(font_path), font_size)
             _header_font_tag = dpg.add_font(str(font_path), header_size)
-            logger.info("Loaded font: JetBrainsMono @ %dpx", font_size)
+            
+            # Add character ranges to both fonts for better Unicode support
+            for tag in [_default_font_tag, _header_font_tag]:
+                dpg.add_font_range_hint(dpg.mvFontRangeHint_Default, parent=tag)
+                
+                # Explicitly add Latin-1 Supplement (0080-00FF)
+                # and useful block/shape characters for TUI
+                dpg.add_font_range(0x00A0, 0x00FF, parent=tag)  # Latin-1 Supplement (includes ·)
+                dpg.add_font_range(0x2580, 0x259F, parent=tag)  # Block Elements (includes █, ░)
+                dpg.add_font_range(0x25A0, 0x25FF, parent=tag)  # Geometric Shapes (includes ■)
+
+            logger.info("Loaded font: JetBrainsMono @ %dpx with extended Unicode support", font_size)
         else:
             # Use built-in ProggyClean as fallback
             _default_font_tag = None

@@ -38,7 +38,7 @@ A cross-platform desktop application with a TUI-inspired aesthetic, built for pe
 
 ---
 
-## Screenshots
+## Screenshots (outdated as of 20/02/2026)
 
 | Obsidian (Default) | Phosphor (CRT) |
 |---|---|
@@ -231,8 +231,7 @@ Radar/
 - [x] Theme hot-reload via file watcher
 - [x] Rust accelerator module (PyO3)
 - [x] C signal processing module (cffi)
-- [ ] Interactive map (click events for detail view)
-- [ ] Better maps (or a image of one)
+- [X] Better maps (or a image of one)
 - [ ] Forecast panel (zoom into region)
 - [ ] Historical data graphing
 - [ ] Alert system (sound + notification for threshold events)

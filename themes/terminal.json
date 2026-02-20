@@ -1,0 +1,48 @@
+{
+    "name": "Terminal",
+    "description": "Phosphor amber with dense map and sweeping radar",
+    "map_land_char": "■",
+    "map_water_char": ".",
+    "map_radar_sweep": true,
+    "colors": {
+        "background": "#140a00",
+        "surface": "#261500",
+        "surface_alt": "#331c00",
+        "primary": "#ff9900",
+        "accent": "#ffb233",
+        "text": "#ff9900",
+        "text_dim": "#aa6600",
+        "text_bright": "#ffeecc",
+        "success": "#33ff00",
+        "warning": "#ffcc00",
+        "danger": "#ff3300",
+        "border": "#4c2e00",
+        "border_focus": "#ff9900",
+        "scrollbar": "#331c00",
+        "scrollbar_active": "#ff9900",
+        "header": "#1a0d00",
+        "row_even": "#1a0d00",
+        "row_odd": "#261500",
+        "highlight": "#ff990022",
+        "magnitude_low": "#33ff00",
+        "magnitude_mid": "#ffcc00",
+        "magnitude_high": "#ff6600",
+        "magnitude_severe": "#ff3300"
+    },
+    "borders": {
+        "style": "thin",
+        "radius": 0,
+        "thickness": 1
+    },
+    "animation": {
+        "transition_ms": 250,
+        "fade_ms": 150,
+        "pulse_ms": 1000,
+        "highlight_decay_ms": 2500
+    },
+    "typography": {
+        "font_size": 15,
+        "line_spacing": 1.4,
+        "header_scale": 1.25
+    }
+}

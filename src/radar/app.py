@@ -103,6 +103,12 @@ class RadarApp:
         self._theme_watcher = ThemeWatcher(
             THEMES_DIR, self._on_theme_file_changed
         )
+        
+        # Theme Transition State
+        self._old_theme: ThemeData | None = None
+        self._target_theme: ThemeData | None = None
+        self._theme_transition_start = 0.0
+        self._theme_transition_duration = 0.0
 
         # Async loop
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -151,25 +157,64 @@ class RadarApp:
 
     def _apply_theme_switch(self, theme_name: str) -> None:
         """Switch to a different theme (called from UI thread)."""
+        if theme_name == self._active_theme_name and self._target_theme is None:
+            return
+
         try:
             new_theme = load_theme(theme_name)
-            self._theme = new_theme
+            self._old_theme = self._theme
+            self._target_theme = new_theme
             self._active_theme_name = theme_name
-            apply_theme(new_theme)
+            self._theme_transition_start = time.monotonic()
+            
+            # Use whichever is slower so it's smooth
+            duration_ms = max(self._old_theme.transition_ms if self._old_theme else 200, new_theme.transition_ms)
+            self._theme_transition_duration = duration_ms / 1000.0
 
-            # Update all panels
-            if self._eq_panel:
-                self._eq_panel.update_theme(new_theme)
-            if self._wx_panel:
-                self._wx_panel.update_theme(new_theme)
-            if self._map_panel:
-                self._map_panel.update_theme(new_theme)
-            if self._status_bar:
-                self._status_bar.update_theme(new_theme)
-
-            logger.info("Switched to theme: %s", theme_name)
+            logger.info("Starting theme transition to: %s (over %.2fs)", theme_name, self._theme_transition_duration)
         except Exception as e:
-            logger.error("Failed to switch theme to '%s': %s", theme_name, e)
+            logger.error("Failed to load theme '%s': %s", theme_name, e)
+
+    def _update_theme_transition(self) -> None:
+        """Process active theme interpolation."""
+        if self._target_theme is None or self._old_theme is None:
+            return
+
+        from radar.themes.loader import transition_theme
+
+        now = time.monotonic()
+        elapsed = now - self._theme_transition_start
+        progress = elapsed / self._theme_transition_duration if self._theme_transition_duration > 0 else 1.0
+
+        if progress >= 1.0:
+            # Transition complete
+            self._theme = self._target_theme
+            self._old_theme = None
+            self._target_theme = None
+            
+            apply_theme(self._theme)
+            
+            # Final update
+            if self._eq_panel: self._eq_panel.update_theme(self._theme)
+            if self._wx_panel: self._wx_panel.update_theme(self._theme)
+            if self._map_panel: self._map_panel.update_theme(self._theme)
+            if self._status_bar: self._status_bar.update_theme(self._theme)
+            
+            logger.info("Theme transition complete.")
+        else:
+            # Interpolate
+            interp_theme = transition_theme(self._old_theme, self._target_theme, progress)
+            self._theme = interp_theme
+            apply_theme(self._theme)
+            
+            # Soft-update components so dynamic draws (like Map vector colors) update
+            # Some components caching colors might need full self._eq_panel.update_theme(),
+            # but usually just changing DPG global theme is enough if they rely on it implicitly.
+            # Panels that cache `self._theme.color()` directly need updates:
+            if self._eq_panel: self._eq_panel.update_theme(self._theme, soft=True)
+            if self._map_panel: self._map_panel.update_theme(self._theme)  # Force redraw
+            if self._wx_panel: self._wx_panel.update_theme(self._theme, soft=True)
+            if self._status_bar: self._status_bar.update_theme(self._theme, soft=True)
 
     # Async data fetching
     def _start_async_loop(self) -> None:
@@ -265,6 +310,12 @@ class RadarApp:
                     self._config.weather.longitude
                 )
                 self._eq_panel.build(dpg.last_item())
+                
+                # Wire list-to-map selection
+                def _on_eq_click(event_id: str) -> None:
+                    if self._map_panel:
+                        self._map_panel.set_selection(event_id)
+                self._eq_panel.set_on_click(_on_eq_click)
 
             # Weather Panel (Top Right)
             with dpg.child_window(tag="wx_panel_container", border=False):
@@ -381,9 +432,15 @@ class RadarApp:
                 if self._wx_panel:
                     self._wx_panel.set_location_name(msg.name)
 
+        # Process theme transitions
+        self._update_theme_transition()
+
         # Update animations
         if self._eq_panel:
             self._eq_panel.update_highlights()
+            
+        if self._map_panel:
+            self._map_panel.update_animations()
 
         # Update clock and FPS
         if self._status_bar:
@@ -420,10 +477,21 @@ class RadarApp:
 
         # 7. Main render loop
         logger.info("Radar is running — Ctrl+C to stop")
+        
+        target_fps = 60
+        frame_time = 1.0 / target_fps
+        
         try:
             while dpg.is_dearpygui_running():
+                start_time = time.monotonic()
+                
                 self._frame_update()
                 dpg.render_dearpygui_frame()
+                
+                # FPS Limiter
+                elapsed = time.monotonic() - start_time
+                if elapsed < frame_time:
+                    time.sleep(frame_time - elapsed)
         except KeyboardInterrupt:
             logger.info("Shutdown requested")
         finally:

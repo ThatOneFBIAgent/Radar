@@ -76,6 +76,9 @@ class ThemeData:
     font_size: int = 15
     line_spacing: float = 1.4
     header_scale: float = 1.3
+    map_land_char: str = "+"
+    map_water_char: str = "·"
+    map_radar_sweep: bool = False
     _source_path: Path | None = None
 
     def color(self, key: str) -> tuple[int, int, int, int]:
@@ -137,6 +140,11 @@ def _parse_theme(raw: dict, source: Path) -> ThemeData:
     theme.font_size = typo.get("font_size", 15)
     theme.line_spacing = typo.get("line_spacing", 1.4)
     theme.header_scale = typo.get("header_scale", 1.3)
+
+    # ── Custom Configs ──
+    theme.map_land_char = raw.get("map_land_char", "+")
+    theme.map_water_char = raw.get("map_water_char", "·")
+    theme.map_radar_sweep = raw.get("map_radar_sweep", False)
 
     logger.info("Loaded theme: %s (%d colors)", theme.name, len(theme.colors))
     return theme
@@ -329,3 +337,41 @@ def apply_theme(theme: ThemeData) -> int | str:
     _active_theme_tag = theme_tag
     logger.info("Applied theme: %s", theme.name)
     return theme_tag
+
+
+def transition_theme(old_theme: ThemeData, new_theme: ThemeData, progress: float) -> ThemeData:
+    """Create a temporary ThemeData object representing the interpolated colors."""
+    from radar.ui.animations import lerp_color, lerp
+
+    # Make progress safe
+    t = max(0.0, min(1.0, progress))
+
+    # Fast path: if t is 0 or 1
+    if t <= 0.0:
+        return old_theme
+    if t >= 1.0:
+        return new_theme
+
+    interp_theme = ThemeData(
+        name=f"Transition",
+        border_style=new_theme.border_style,
+        border_radius=int(lerp(old_theme.border_radius, new_theme.border_radius, t)),
+        border_thickness=int(lerp(old_theme.border_thickness, new_theme.border_thickness, t)),
+        font_size=int(lerp(old_theme.font_size, new_theme.font_size, t)),
+        line_spacing=lerp(old_theme.line_spacing, new_theme.line_spacing, t),
+        header_scale=lerp(old_theme.header_scale, new_theme.header_scale, t),
+        map_land_char=new_theme.map_land_char,
+        map_water_char=new_theme.map_water_char,
+        map_radar_sweep=new_theme.map_radar_sweep,
+    )
+
+    # Collect all common keys
+    all_keys = set(old_theme.colors.keys()) | set(new_theme.colors.keys())
+
+    for key in all_keys:
+        old_color = old_theme.color(key)
+        new_color = new_theme.color(key)
+        interp_theme.colors[key] = lerp_color(old_color, new_color, t)
+
+    return interp_theme
+

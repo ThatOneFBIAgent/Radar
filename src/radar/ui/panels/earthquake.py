@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import math
+import time
 import dearpygui.dearpygui as dpg
 
 from radar.ui.animations import Highlighter, lerp_color
@@ -38,9 +39,19 @@ class EarthquakePanel:
         self._container_tag: int | str | None = None
         self._count_tag: int | str | None = None
         self._row_tags: list[int | str] = []
-        self._user_lat: float | None = None
         self._user_lon: float | None = None
         self._highlight_theme: int | str | None = None
+        self._mag_themes: dict[str, int | str] = {}
+        self._on_click: callable = None
+        self._selected_id: str | None = None
+
+        # Scrolling state
+        self._scroll_y = 0.0
+        self._target_scroll_y = 0.0
+        self._scroll_active = False
+        self._scroll_start_time = 0.0
+        self._scroll_duration = 0.5  # slightly faster
+        self._scroll_event_id: str | None = None # Track the active target
 
     def set_user_location(self, lat: float, lon: float) -> None:
         """Update the reference location for distance calculations."""
@@ -81,6 +92,14 @@ class EarthquakePanel:
                 # Or derive from theme if possible. using a hardcoded safe color for now.
                 dpg.add_theme_color(dpg.mvThemeCol_TableRowBg, (100, 100, 120, 100))
 
+        # Create themes for magnitude colors
+        for level in ["low", "mid", "high", "severe"]:
+            with dpg.theme() as theme:
+                with dpg.theme_component(dpg.mvSelectable):
+                    dpg.add_theme_color(dpg.mvThemeCol_Text, self._theme.color(f"magnitude_{level}"))
+                    dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (0, 0, 0, 0)) # No flash on click
+            self._mag_themes[level] = theme
+
         with dpg.child_window(parent=parent, border=True) as container:
             self._container_tag = container
 
@@ -120,6 +139,24 @@ class EarthquakePanel:
                 self._col_tags["DISTANCE"] = dpg.add_table_column(label="DIST", init_width_or_weight=0.10)
                 self._col_tags["COORDINATES"] = dpg.add_table_column(label="COORDINATES", init_width_or_weight=0.20)
                 self._col_tags["TYPE"] = dpg.add_table_column(label="TYPE", init_width_or_weight=0.09)
+
+        # Re-render table
+        self.update(self._events)
+
+    def _on_row_clicked(self, sender: int | str, app_data: list, user_data: str) -> None:
+        """Handle clicking an earthquake row via selectable."""
+        event_id = user_data
+        
+        # Immediately deselect the selectable itself (we handle selection via row themes)
+        dpg.set_value(sender, False)
+
+        if event_id and self._on_click:
+            self._on_click(event_id)
+            self.highlight_event(event_id)
+
+    def set_on_click(self, callback: callable) -> None:
+        """Set the callback for when an earthquake row is clicked."""
+        self._on_click = callback
 
     def _sort_callback(self, sender: int | str, sort_specs: dict | list) -> None:
         """Handle table sort events."""
@@ -169,7 +206,6 @@ class EarthquakePanel:
             self._highlighter.add_many(new_ids)
 
         # Clear existing rows
-        # Clear existing rows
         if self._table_tag is not None:
              # Safely delete tracked rows
              for tag in self._row_tags:
@@ -184,7 +220,7 @@ class EarthquakePanel:
 
         # Populate rows
         for event in events:
-            # Use user_data to store event ID or store in map
+            # Populate rows
             with dpg.table_row(parent=self._table_tag) as row:
                 self._row_tags.append(row)
                 self._row_map[event.id] = row
@@ -192,13 +228,27 @@ class EarthquakePanel:
                 mag_color = self._mag_color(event.magnitude)
                 is_significant = event.magnitude >= self._threshold
 
-                # Magnitude Column
+                # Magnitude Column (Selectable for row interaction)
                 with dpg.group(horizontal=True):
                     if is_significant:
                         dpg.add_text("!", color=self._theme.color("danger"))
                     
                     mag_text = f"{event.magnitude:4.1f}" if event.magnitude >= 0 else f"{event.magnitude:4.1f}"
-                    dpg.add_text(mag_text, color=mag_color)
+                    # Use a selectable for the whole row interaction
+                    sel = dpg.add_selectable(
+                        label=mag_text, 
+                        callback=self._on_row_clicked, 
+                        user_data=event.id,
+                        span_columns=True
+                    )
+                    
+                    # Apply color theme based on magnitude
+                    level = "low"
+                    if event.magnitude >= 7.0: level = "severe"
+                    elif event.magnitude >= 5.0: level = "high"
+                    elif event.magnitude >= 3.0: level = "mid"
+                    
+                    dpg.bind_item_theme(sel, self._mag_themes[level])
 
                 # Depth Column
                 dpg.add_text(f"{event.depth:.1f} km", color=self._theme.color("text"))
@@ -228,6 +278,12 @@ class EarthquakePanel:
                     color=self._theme.color("text_dim"),
                 )
 
+        # If we have a selection, re-apply the theme to the new row
+        if self._selected_id:
+            row = self._row_map.get(self._selected_id)
+            if row and dpg.does_item_exist(row):
+                dpg.bind_item_theme(row, self._highlight_theme)
+
         # Update count
         if self._count_tag:
             dpg.set_value(self._count_tag, f"{len(events)} events")
@@ -237,28 +293,80 @@ class EarthquakePanel:
         if not self._highlight_theme:
             return
 
-        # Deselect all
-        for tag in self._row_tags:
-            if dpg.does_item_exist(tag):
-                # Reset theme to default (0)
-                dpg.bind_item_theme(tag, 0)
-        
+        # Deselect previous
+        if self._selected_id:
+            prev_row = self._row_map.get(self._selected_id)
+            if prev_row and dpg.does_item_exist(prev_row):
+                dpg.bind_item_theme(prev_row, 0)
+
         # Select target
+        self._selected_id = event_id
         row = self._row_map.get(event_id)
         if row and dpg.does_item_exist(row):
             dpg.bind_item_theme(row, self._highlight_theme)
             
             # Auto-scroll to row (approximate)
-            # DPG doesn't have a direct "scroll to item" for tables easily accessible
-            # without calculating pixel logic, but `set_y_scroll` on the child window *might* work
-            # if we knew the offset. For now, selection visualization is a good start.
+            self.scroll_to(event_id)
 
+    def scroll_to(self, event_id: str) -> None:
+        """Initialize a smooth scroll to the specified event."""
+        if not self._table_tag or event_id not in self._row_map:
+            return
+            
+        # DEBOUNCE: Don't restart the animation if we are already moving to this target
+        if self._scroll_active and self._scroll_event_id == event_id:
+            return
+
+        try:
+            # Find the visual index of the event
+            row_index = -1
+            for i, e in enumerate(self._events):
+                if e.id == event_id:
+                    row_index = i
+                    break
+            
+            if row_index == -1:
+                return
+
+            # Fine-tuned row height (24px base + small buffer for margins)
+            row_height = 24.5
+            self._target_scroll_y = float(row_index * row_height)
+            self._scroll_y = float(dpg.get_y_scroll(self._table_tag))
+            
+            # Use a slightly wider threshold to prevent micro-jitter
+            if abs(self._target_scroll_y - self._scroll_y) > 2.0:
+                self._scroll_active = True
+                self._scroll_event_id = event_id
+                self._scroll_start_time = time.monotonic()
+                logger.debug("Scrolling to event %s (index %d, target %f)", event_id, row_index, self._target_scroll_y)
+            else:
+                self._scroll_active = False
+        except Exception as e:
+            logger.error("Failed to calculate scroll target: %s", e)
 
     def update_highlights(self) -> None:
         """Update highlight animations (call each frame)."""
         self._highlighter.cleanup()
+        
+        # Handle smooth scroll animation (Ease In-Out)
+        if self._scroll_active and self._table_tag:
+            now = time.monotonic()
+            elapsed = now - self._scroll_start_time
+            t = min(1.0, elapsed / self._scroll_duration)
+            
+            # Ease in-out cubic
+            if t < 0.5:
+                interp = 4 * t * t * t
+            else:
+                interp = 1 - (-2 * t + 2) ** 3 / 2
+            
+            current_y = self._scroll_y + (self._target_scroll_y - self._scroll_y) * interp
+            dpg.set_y_scroll(self._table_tag, current_y)
+            
+            if t >= 1.0:
+                self._scroll_active = False
 
-    def update_theme(self, theme: ThemeData) -> None:
+    def update_theme(self, theme: ThemeData, soft: bool = False) -> None:
         """Apply a new theme to the panel."""
         self._theme = theme
         self._highlighter = Highlighter(
@@ -266,5 +374,5 @@ class EarthquakePanel:
             pulse_ms=theme.pulse_ms,
         )
         # Re-render with current events
-        if self._events:
+        if self._events and not soft:
             self.update(self._events)

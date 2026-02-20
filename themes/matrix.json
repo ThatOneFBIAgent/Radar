@@ -1,0 +1,48 @@
+{
+    "name": "Matrix",
+    "description": "Terminal green glow with high contrast and radar sweep",
+    "map_land_char": "█",
+    "map_water_char": "░",
+    "map_radar_sweep": true,
+    "colors": {
+        "background": "#000803",
+        "surface": "#001a09",
+        "surface_alt": "#002b0f",
+        "primary": "#00ff41",
+        "accent": "#00cc33",
+        "text": "#00ff41",
+        "text_dim": "#008822",
+        "text_bright": "#ffffff",
+        "success": "#00ff41",
+        "warning": "#ccff00",
+        "danger": "#ff003c",
+        "border": "#005511",
+        "border_focus": "#00ff41",
+        "scrollbar": "#00330d",
+        "scrollbar_active": "#00ff41",
+        "header": "#001105",
+        "row_even": "#001406",
+        "row_odd": "#001a09",
+        "highlight": "#00ff4122",
+        "magnitude_low": "#00cc33",
+        "magnitude_mid": "#ccff00",
+        "magnitude_high": "#ff8800",
+        "magnitude_severe": "#ff003c"
+    },
+    "borders": {
+        "style": "thin",
+        "radius": 0,
+        "thickness": 1
+    },
+    "animation": {
+        "transition_ms": 250,
+        "fade_ms": 150,
+        "pulse_ms": 1000,
+        "highlight_decay_ms": 2500
+    },
+    "typography": {
+        "font_size": 15,
+        "line_spacing": 1.4,
+        "header_scale": 1.25
+    }
+}
