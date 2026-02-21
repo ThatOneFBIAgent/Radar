@@ -26,14 +26,14 @@ class _ThemeFileHandler(FileSystemEventHandler):
         self._callback = callback
         self._debounce_lock = threading.Lock()
 
-    def on_modified(self, event: FileModifiedEvent) -> None:  # type: ignore[override]
+    def on_modified(self, event: FileModifiedEvent) -> None:
         if event.is_directory:
             return
         path = Path(str(event.src_path))
         if path.suffix.lower() != ".json":
             return
 
-        # Debounce — watchdog can fire multiple events per save
+        # Debounce: watchdog can fire multiple events per save
         if not self._debounce_lock.acquire(blocking=False):
             return
         try:

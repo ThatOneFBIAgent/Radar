@@ -7,7 +7,7 @@
 
 [general]
 # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-log_level = "DEBUG"
+log_level = "INFO"
 
 # Unit system: "metric" or "imperial"
 units = "metric"
@@ -20,7 +20,7 @@ units = "metric"
 #   2.5_hour, 2.5_day, 2.5_week, 2.5_month
 #   4.5_hour, 4.5_day, 4.5_week, 4.5_month
 #   significant_hour, significant_day, significant_week, significant_month
-feed = "2.5_month"
+feed = "all_week"
 
 # Polling interval in seconds (minimum 30)
 poll_interval = 60
@@ -33,9 +33,9 @@ max_display = 100
 
 [weather]
 # Location coordinates (default: Houston, TX)
-latitude = 17.9689
-longitude = -92.9576
-location_name = "Tabasco, Mexico"
+latitude = 19.4326
+longitude = -99.1332
+location_name = "CDMX, Mexico"
 
 # Polling interval in seconds (minimum 60)
 poll_interval = 120
@@ -54,8 +54,8 @@ font_size = 15
 window_width = 1400
 window_height = 900
 
-# Start maximized
-start_maximized = false
+# Start maximized (this ignores window_width and window_height if true)
+start_maximized = true
 
 # Enable animations
 animations = true

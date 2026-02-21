@@ -18,7 +18,7 @@ from radar.config import THEMES_DIR
 
 logger = logging.getLogger(__name__)
 
-# ── Required color keys ────────────────────────────────────────
+# Required color keys───
 REQUIRED_COLORS = {
     "background", "surface", "primary", "accent",
     "text", "text_dim", "text_bright",
@@ -28,7 +28,7 @@ REQUIRED_COLORS = {
 }
 
 
-# ── Hex → RGBA conversion ─────────────────────────────────────
+# Hex → RGBA conversion
 def hex_to_rgba(hex_color: str) -> tuple[int, int, int, int]:
     """Convert a hex color string to an RGBA tuple (0-255).
 
@@ -58,7 +58,7 @@ def hex_to_rgba(hex_color: str) -> tuple[int, int, int, int]:
         raise ValueError(f"Invalid hex color: {hex_color}")
 
 
-# ── Theme data ─────────────────────────────────────────────────
+# Theme data────────────
 @dataclass
 class ThemeData:
     """Parsed and validated theme data ready for application."""
@@ -86,7 +86,7 @@ class ThemeData:
         return self.colors.get(key, (255, 255, 255, 255))
 
 
-# ── Loading ────────────────────────────────────────────────────
+# Loading───────────────
 def load_theme(name: str, themes_dir: Path | None = None) -> ThemeData:
     """Load a theme JSON file by name and return validated ThemeData."""
     directory = themes_dir or THEMES_DIR
@@ -110,7 +110,7 @@ def _parse_theme(raw: dict, source: Path) -> ThemeData:
         _source_path=source,
     )
 
-    # ── Colors ──
+    # Colors
     raw_colors = raw.get("colors", {})
     missing = REQUIRED_COLORS - set(raw_colors.keys())
     if missing:
@@ -122,26 +122,26 @@ def _parse_theme(raw: dict, source: Path) -> ThemeData:
         except ValueError as e:
             logger.warning("Theme '%s' bad color '%s': %s", theme.name, key, e)
 
-    # ── Borders ──
+    # Borders
     borders = raw.get("borders", {})
     theme.border_style = borders.get("style", "thin")
     theme.border_radius = borders.get("radius", 4)
     theme.border_thickness = borders.get("thickness", 1)
 
-    # ── Animation ──
+    # Animation
     anim = raw.get("animation", {})
     theme.transition_ms = anim.get("transition_ms", 200)
     theme.fade_ms = anim.get("fade_ms", 150)
     theme.pulse_ms = anim.get("pulse_ms", 1200)
     theme.highlight_decay_ms = anim.get("highlight_decay_ms", 3000)
 
-    # ── Typography ──
+    # Typography
     typo = raw.get("typography", {})
     theme.font_size = typo.get("font_size", 15)
     theme.line_spacing = typo.get("line_spacing", 1.4)
     theme.header_scale = typo.get("header_scale", 1.3)
 
-    # ── Custom Configs ──
+    # Custom Configs
     theme.map_land_char = raw.get("map_land_char", "+")
     theme.map_water_char = raw.get("map_water_char", "·")
     theme.map_radar_sweep = raw.get("map_radar_sweep", False)
@@ -158,7 +158,7 @@ def get_available_themes(themes_dir: Path | None = None) -> list[str]:
     return sorted(p.stem for p in directory.glob("*.json"))
 
 
-# ── DearPyGui application ─────────────────────────────────────
+# DearPyGui application
 _active_theme_tag: int | str | None = None
 
 
@@ -178,7 +178,7 @@ def apply_theme(theme: ThemeData) -> int | str:
 
     with dpg.theme() as theme_tag:
         with dpg.theme_component(dpg.mvAll):
-            # ── Window / Frame backgrounds ──
+            # Window / Frame backgrounds
             dpg.add_theme_color(
                 dpg.mvThemeCol_WindowBg, theme.color("background"), category=dpg.mvThemeCat_Core
             )
@@ -192,7 +192,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 dpg.mvThemeCol_MenuBarBg, theme.color("header"), category=dpg.mvThemeCat_Core
             )
 
-            # ── Text ──
+            # Text
             dpg.add_theme_color(
                 dpg.mvThemeCol_Text, theme.color("text"), category=dpg.mvThemeCat_Core
             )
@@ -200,7 +200,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 dpg.mvThemeCol_TextDisabled, theme.color("text_dim"), category=dpg.mvThemeCat_Core
             )
 
-            # ── Borders ──
+            # Borders
             dpg.add_theme_color(
                 dpg.mvThemeCol_Border, theme.color("border"), category=dpg.mvThemeCat_Core
             )
@@ -208,7 +208,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 dpg.mvThemeCol_BorderShadow, (0, 0, 0, 0), category=dpg.mvThemeCat_Core
             )
 
-            # ── Frames (inputs, combo boxes, etc.) ──
+            # Frames (inputs, combo boxes, etc.)
             dpg.add_theme_color(
                 dpg.mvThemeCol_FrameBg, theme.color("surface"), category=dpg.mvThemeCat_Core
             )
@@ -220,7 +220,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 dpg.mvThemeCol_FrameBgActive, theme.color("primary"), category=dpg.mvThemeCat_Core
             )
 
-            # ── Title bar ──
+            # Title bar
             dpg.add_theme_color(
                 dpg.mvThemeCol_TitleBg, theme.color("header"), category=dpg.mvThemeCat_Core
             )
@@ -228,7 +228,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 dpg.mvThemeCol_TitleBgActive, theme.color("surface"), category=dpg.mvThemeCat_Core
             )
 
-            # ── Tabs ──
+            # Tabs
             dpg.add_theme_color(
                 dpg.mvThemeCol_Tab, theme.color("surface"), category=dpg.mvThemeCat_Core
             )
@@ -239,7 +239,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 dpg.mvThemeCol_TabActive, theme.color("primary"), category=dpg.mvThemeCat_Core
             )
 
-            # ── Buttons ──
+            # Buttons
             dpg.add_theme_color(
                 dpg.mvThemeCol_Button, theme.color("surface"), category=dpg.mvThemeCat_Core
             )
@@ -250,7 +250,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 dpg.mvThemeCol_ButtonActive, theme.color("accent"), category=dpg.mvThemeCat_Core
             )
 
-            # ── Headers (collapsing headers, table headers) ──
+            # Headers (collapsing headers, table headers)
             dpg.add_theme_color(
                 dpg.mvThemeCol_Header, theme.color("header"), category=dpg.mvThemeCat_Core
             )
@@ -261,7 +261,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 dpg.mvThemeCol_HeaderActive, theme.color("accent"), category=dpg.mvThemeCat_Core
             )
 
-            # ── Scrollbar ──
+            # Scrollbar
             dpg.add_theme_color(
                 dpg.mvThemeCol_ScrollbarBg, theme.color("background"), category=dpg.mvThemeCat_Core
             )
@@ -275,12 +275,12 @@ def apply_theme(theme: ThemeData) -> int | str:
                 category=dpg.mvThemeCat_Core,
             )
 
-            # ── Separator ──
+            # Separator
             dpg.add_theme_color(
                 dpg.mvThemeCol_Separator, theme.color("border"), category=dpg.mvThemeCat_Core
             )
 
-            # ── Check mark / slider ──
+            # Check mark / slider
             dpg.add_theme_color(
                 dpg.mvThemeCol_CheckMark, theme.color("primary"), category=dpg.mvThemeCat_Core
             )
@@ -292,7 +292,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 category=dpg.mvThemeCat_Core,
             )
 
-            # ── Table ──
+            # Table
             dpg.add_theme_color(
                 dpg.mvThemeCol_TableHeaderBg, theme.color("header"), category=dpg.mvThemeCat_Core
             )
@@ -311,7 +311,7 @@ def apply_theme(theme: ThemeData) -> int | str:
                 category=dpg.mvThemeCat_Core,
             )
 
-            # ── Style ──
+            # Style
             dpg.add_theme_style(
                 dpg.mvStyleVar_FrameRounding, theme.border_radius, category=dpg.mvThemeCat_Core
             )
