@@ -38,7 +38,7 @@ A cross-platform desktop application with a TUI-inspired aesthetic, built for pe
 
 ---
 
-## Screenshots (outdated as of 20/02/2026)
+## Screenshots
 
 | Obsidian (Default) | Phosphor (CRT) |
 |---|---|

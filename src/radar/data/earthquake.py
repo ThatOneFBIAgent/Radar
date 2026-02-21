@@ -175,12 +175,30 @@ class EarthquakeFetcher:
         if _USE_RUST:
             try:
                 import json as _json
-                events = _rust_parse(_json.dumps(raw))
-            except Exception:
-                logger.warning("Rust parser failed, falling back to Python")
+                # Rust returns a list of QuakeEvent objects (which have time_ms instead of time)
+                raw_events = _rust_parse(_json.dumps(raw))
+                events = [
+                    EarthquakeEvent(
+                        id=e.id,
+                        magnitude=e.magnitude,
+                        depth=e.depth,
+                        place=e.place,
+                        time=datetime.fromtimestamp(e.time_ms / 1000, tz=timezone.utc),
+                        latitude=e.latitude,
+                        longitude=e.longitude,
+                        url=e.url,
+                        felt=e.felt,
+                        tsunami=e.tsunami,
+                        mag_type=e.mag_type,
+                    )
+                    for e in raw_events
+                ]
+            except Exception as e:
+                logger.warning("Rust parser failed, falling back to Python: %s", e)
                 events = _parse_features(raw)
         else:
             events = _parse_features(raw)
+
 
         # Sort by time descending, limit
         events.sort(key=lambda e: e.time, reverse=True)

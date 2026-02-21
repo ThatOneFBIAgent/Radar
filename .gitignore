@@ -1,5 +1,31 @@
+# Python
+__pycache__/
 *.py[cod]
-__pycache__/*
-__pycache__
-.pytest_cache/*
-.pytest_cache
+*$py.class
+*.so
+.pytest_cache/
+.venv/
+env/
+venv/
+build/
+dist/
+
+# Rust
+**/target/
+**/*.rs.bk
+Cargo.lock
+build_log.txt
+
+# C Extensions
+_radar_signal.c
+_radar_signal.pyd
+_radar_signal.lib
+_radar_signal.exp
+*.o
+*.obj
+*.pyd
+
+# Workspace
+.vscode/
+.idea/
+*.out
