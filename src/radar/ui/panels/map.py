@@ -23,12 +23,14 @@ if TYPE_CHECKING:
     from radar.data.earthquake import EarthquakeEvent
     from radar.themes.loader import ThemeData
 
+from radar.config import DATA_DIR
+
 logger = logging.getLogger(__name__)
 
 # Load high-resolution world map polygons
 _COASTLINE_POLYGONS: list[list[tuple[float, float]]] = []
 try:
-    _poly_path = Path(__file__).parent.parent.parent / "data" / "world_polygons.json"
+    _poly_path = DATA_DIR / "world_polygons.json"
     if _poly_path.exists():
         with open(_poly_path, "r") as f:
             _COASTLINE_POLYGONS = json.load(f)

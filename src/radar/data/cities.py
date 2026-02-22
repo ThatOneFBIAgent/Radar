@@ -14,9 +14,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+from radar.config import DATA_DIR
+
 logger = logging.getLogger(__name__)
 
-_DATA_FILE = Path(__file__).parent / "cities_data.json.gz"
+_DATA_FILE = DATA_DIR / "cities_data.json.gz"
 
 
 @dataclass(frozen=True, slots=True)

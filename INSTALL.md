@@ -204,13 +204,13 @@ ruff check src/
 ```bash
 pip install pyinstaller
 
-pyinstaller --name radar \
-    --onedir \
-    --add-data "themes:themes" \
-    --add-data "config.toml:." \
-    --add-data "assets:assets" \
-    --hidden-import dearpygui \
-    src/radar/__main__.py
+pyinstaller --name radar --onedir --add-data "themes:themes" --add-data "config.toml:." --add-data "assets:assets" --add-data "src/radar/data:radar/data" --icon=assets/icon.ico --hidden-import dearpygui src/radar/__main__.py
+```
+
+Or with the included .spec:
+
+```bash
+pyinstaller radar.spec
 ```
 
 ### Using Nuitka

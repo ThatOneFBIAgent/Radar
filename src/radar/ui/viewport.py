@@ -11,7 +11,7 @@ from pathlib import Path
 
 import dearpygui.dearpygui as dpg
 
-from radar.config import RadarConfig, FONTS_DIR
+from radar.config import RadarConfig, FONTS_DIR, ASSETS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +86,9 @@ def create_viewport(config: RadarConfig) -> None:
     _setup_fonts(config.ui.font_size, 1.3)
     
     # Icon setup
-    icon_path = Path("assets/icon.png")
+    icon_path = ASSETS_DIR / "icon.png"
     if not icon_path.exists():
-        icon_path = Path("assets/icon.ico")
+        icon_path = ASSETS_DIR / "icon.ico"
     
     if icon_path.exists():
         try:

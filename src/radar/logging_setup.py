@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 from typing import Literal
 
 
@@ -17,6 +18,7 @@ _DATE_FORMAT = "%H:%M:%S"
 
 def setup_logging(
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO",
+    log_file: Path | str | None = None,
 ) -> None:
     """Configure the root logger for the application.
 
@@ -29,13 +31,21 @@ def setup_logging(
     for handler in root.handlers[:]:
         root.removeHandler(handler)
 
-    # Console handler
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(numeric_level)
-    console.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
+    # Console handler (only if we have a real terminal or not in quiet mode)
+    if sys.stdout and sys.stdout.isatty():
+        console = logging.StreamHandler(sys.stdout)
+        console.setLevel(numeric_level)
+        console.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
+        root.addHandler(console)
+    
+    # File handler
+    if log_file:
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(numeric_level)
+        file_handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
+        root.addHandler(file_handler)
 
     root.setLevel(numeric_level)
-    root.addHandler(console)
 
     # Quiet noisy libraries
     logging.getLogger("aiohttp").setLevel(logging.WARNING)

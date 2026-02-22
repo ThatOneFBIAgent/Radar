@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 import tomllib
+import os
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -16,12 +18,60 @@ from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
-# Default paths
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.toml"
-THEMES_DIR = PROJECT_ROOT / "themes"
+# Resolve paths. 
+# PROJECT_ROOT: Points to the internal data (assets, data)
+# BASE_DIR: Points to the directory containing the .exe (for user-editable config/themes)
+# LOG_DIR: User-writable directory in LocalAppData for logs
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    PROJECT_ROOT = Path(sys._MEIPASS)
+    BASE_DIR = Path(sys.executable).parent
+    DATA_DIR = PROJECT_ROOT / "radar" / "data"
+    
+    # Use %LOCALAPPDATA% for logs on Windows
+    _appdata = os.environ.get("LOCALAPPDATA")
+    if _appdata:
+        LOG_DIR = Path(_appdata) / "Radar"
+    else:
+        LOG_DIR = BASE_DIR # Fallback
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+    BASE_DIR = PROJECT_ROOT
+    DATA_DIR = PROJECT_ROOT / "src" / "radar" / "data"
+    LOG_DIR = BASE_DIR
+
+# Ensure LOG_DIR exists
+try:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
+# Prioritize external config.toml if it exists next to the .exe
+_ext_config = BASE_DIR / "config.toml"
+DEFAULT_CONFIG_PATH = _ext_config if _ext_config.exists() else PROJECT_ROOT / "config.toml"
+
+# Prioritize external themes/ if it exists next to the .exe
+_ext_themes = BASE_DIR / "themes"
+THEMES_DIR = _ext_themes if _ext_themes.exists() else PROJECT_ROOT / "themes"
+
 ASSETS_DIR = PROJECT_ROOT / "assets"
 FONTS_DIR = ASSETS_DIR / "fonts"
+
+
+def get_resource_path(relative_path: str | Path) -> Path:
+    """Get the absolute path to a resource, supporting both dev and PyInstaller modes."""
+    # If the path is already absolute, return it
+    p = Path(relative_path)
+    if p.is_absolute():
+        return p
+
+    # If frozen, look in _internal (PROJECT_ROOT)
+    if getattr(sys, "frozen", False):
+        return PROJECT_ROOT / relative_path
+
+    # In development, we need to handle paths relative to the project root
+    # or handle them as they were intended.
+    # For simplicity, we assume PROJECT_ROOT is the base.
+    return PROJECT_ROOT / relative_path
 
 # USGS Feed URL map
 _USGS_BASE = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary"
