@@ -11,6 +11,7 @@ a = Analysis(
         ('assets', 'assets'),
         ('src/radar/data/cities_data.json.gz', 'radar/data'),
         ('src/radar/data/world_polygons.json', 'radar/data'),
+        ('sound', 'sound'),
     ],
     hiddenimports=['dearpygui'],
     hookspath=[],

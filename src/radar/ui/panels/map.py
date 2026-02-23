@@ -120,6 +120,10 @@ class MapPanel:
         # Selection state
         self._selected_id: str | None = None
 
+        # Felt warning state
+        self._felt_warning: bool = False
+        self._felt_warning_tag: int | str | None = None
+
     def resize(self, width: int, height: int) -> None:
         """Update panel dimensions, mark as dirty to debounce recalculations."""
         if width == self._width and height == self._height:
@@ -198,6 +202,13 @@ class MapPanel:
                 header = dpg.add_text("[SCAN] SEISMIC SCANNER")
                 if header_font:
                     dpg.bind_item_font(header, header_font)
+                
+                # Felt warning indicator (hidden by default)
+                self._felt_warning_tag = dpg.add_text(
+                    "  ! FELT", color=(255, 50, 50, 255), show=False
+                )
+                if header_font:
+                    dpg.bind_item_font(self._felt_warning_tag, header_font)
 
             dpg.add_separator()
 
@@ -420,6 +431,23 @@ class MapPanel:
             self._selected_id = event_id
             
         logger.debug("Map selection set to: %s", self._selected_id)
+
+    def set_felt_warning(self, active: bool) -> None:
+        """Enable or disable the blinking FELT warning on the header."""
+        self._felt_warning = active
+        if self._felt_warning_tag and dpg.does_item_exist(self._felt_warning_tag):
+            if active:
+                # Blink: toggle visibility based on time (~2Hz)
+                blink = int(time.monotonic() * 4) % 2 == 0
+                dpg.configure_item(self._felt_warning_tag, show=blink)
+                # Pulse the color: red with varying alpha
+                pulse = (math.sin(time.monotonic() * 6) + 1.0) / 2.0
+                alpha = int(150 + pulse * 105)
+                dpg.configure_item(
+                    self._felt_warning_tag, color=(255, 50, 50, alpha)
+                )
+            else:
+                dpg.configure_item(self._felt_warning_tag, show=False)
 
     def update_theme(self, theme: ThemeData, soft: bool = False) -> None:
         """Apply a new theme and redraw."""

@@ -62,3 +62,21 @@ animations = true
 
 # Animation speed multiplier (0.5 = slow, 2.0 = fast)
 animation_speed = 1.0
+
+[audio]
+# Enable or disable UI sound effects
+enabled = true
+
+# Master volume (0.0 = mute, 1.0 = full)
+volume = 0.7
+
+# Radius in km from weather station — if a quake is within this range,
+# the "felt" alert sound plays and a warning indicator blinks.
+felt_radius_km = 300.0
+
+# How long (seconds) the "FELT" warning blinks on the scanner header.
+felt_warning_duration_s = 240
+
+[debug]
+# :3
+mock_feed_file = ""

@@ -8,7 +8,8 @@ __pycache__/
 env/
 venv/
 build/
-dist/
+dist/*
+!dist/Radar_v0.1.0_Setup.exe
 
 # Rust
 **/target/
@@ -29,3 +30,6 @@ _radar_signal.exp
 .vscode/
 .idea/
 *.out
+
+# Debug mock data
+mock/

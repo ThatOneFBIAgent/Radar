@@ -137,12 +137,48 @@ class EarthquakeFetcher:
         events, diff = await fetcher.fetch()
     """
 
-    def __init__(self, feed_url: str, max_display: int = 100) -> None:
+    def __init__(self, feed_url: str, max_display: int = 100, mock_feed_file: str = "") -> None:
         self._feed_url = feed_url
         self._max_display = max_display
+        self._mock_feed_file = mock_feed_file
         self._previous: list[EarthquakeEvent] = []
         self._session: aiohttp.ClientSession | None = None
         self._last_fetch: float = 0.0
+
+        # Mock drip state: pre-parsed events released one per fetch
+        self._mock_pool: list[EarthquakeEvent] = []
+        self._mock_released: list[EarthquakeEvent] = []
+        self._mock_loaded = False
+
+        if self._mock_feed_file:
+            logger.warning("DEBUG MODE: Using mock feed file: %s", self._mock_feed_file)
+
+    def _load_mock_pool(self) -> None:
+        """Pre-load and parse the mock GeoJSON file into the drip pool."""
+        import json
+        from pathlib import Path
+
+        mock_path = Path(self._mock_feed_file)
+        if not mock_path.is_absolute():
+            from radar.config import BASE_DIR
+            mock_path = BASE_DIR / mock_path
+
+        try:
+            with open(mock_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            all_events = _parse_features(raw)
+            # Reverse so we pop from the end (oldest first, newest last)
+            self._mock_pool = list(reversed(all_events))
+            self._mock_loaded = True
+            logger.info(
+                "Mock feed loaded: %d events queued for drip release", len(self._mock_pool)
+            )
+        except FileNotFoundError:
+            logger.error("Mock feed file not found: %s", mock_path)
+            self._mock_loaded = True  # Don't retry
+        except Exception as e:
+            logger.error("Failed to load mock feed: %s", e)
+            self._mock_loaded = True
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -156,20 +192,46 @@ class EarthquakeFetcher:
         """Fetch latest events and return (full_list, diff).
 
         On network errors, returns the previous snapshot with an empty diff.
+        If a mock_feed_file is configured, drips one event per fetch cycle.
         """
-        session = await self._ensure_session()
+        # ── Mock drip path ──
+        if self._mock_feed_file:
+            if not self._mock_loaded:
+                self._load_mock_pool()
 
-        try:
-            async with session.get(self._feed_url) as resp:
-                resp.raise_for_status()
-                raw = await resp.json(content_type=None)
-                self._last_fetch = time.monotonic()
-        except aiohttp.ClientError as e:
-            logger.error("Earthquake fetch failed: %s", e)
-            return self._previous, EarthquakeDiff()
-        except Exception as e:
-            logger.error("Unexpected earthquake fetch error: %s", e)
-            return self._previous, EarthquakeDiff()
+            if self._mock_pool:
+                # Release one event from the pool
+                new_event = self._mock_pool.pop()
+                self._mock_released.append(new_event)
+                logger.info(
+                    "Mock drip: released M%.1f '%s' (%d remaining)",
+                    new_event.magnitude, new_event.place, len(self._mock_pool),
+                )
+            
+            self._last_fetch = time.monotonic()
+            events = list(self._mock_released)
+            events.sort(key=lambda e: e.time, reverse=True)
+            events = events[:self._max_display]
+
+            diff = diff_events(self._previous, events)
+            self._previous = events
+            return events, diff
+
+        else:
+            # ── Live USGS feed ──
+            session = await self._ensure_session()
+
+            try:
+                async with session.get(self._feed_url) as resp:
+                    resp.raise_for_status()
+                    raw = await resp.json(content_type=None)
+                    self._last_fetch = time.monotonic()
+            except aiohttp.ClientError as e:
+                logger.error("Earthquake fetch failed: %s", e)
+                return self._previous, EarthquakeDiff()
+            except Exception as e:
+                logger.error("Unexpected earthquake fetch error: %s", e)
+                return self._previous, EarthquakeDiff()
 
         # Parse
         if _USE_RUST:

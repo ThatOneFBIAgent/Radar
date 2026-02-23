@@ -56,6 +56,10 @@ THEMES_DIR = _ext_themes if _ext_themes.exists() else PROJECT_ROOT / "themes"
 ASSETS_DIR = PROJECT_ROOT / "assets"
 FONTS_DIR = ASSETS_DIR / "fonts"
 
+# Prioritize external sound/ if it exists next to the .exe
+_ext_sound = BASE_DIR / "sound"
+SOUND_DIR = _ext_sound if _ext_sound.exists() else PROJECT_ROOT / "sound"
+
 
 def get_resource_path(relative_path: str | Path) -> Path:
     """Get the absolute path to a resource, supporting both dev and PyInstaller modes."""
@@ -143,11 +147,24 @@ class UIConfig(BaseModel):
     animation_speed: float = Field(default=1.0, ge=0.1, le=5.0)
 
 
+class AudioConfig(BaseModel):
+    enabled: bool = True
+    volume: float = Field(default=0.7, ge=0.0, le=1.0)
+    felt_radius_km: float = Field(default=300.0, ge=0.0)
+    felt_warning_duration_s: int = Field(default=240, ge=0)
+
+
+class DebugConfig(BaseModel):
+    mock_feed_file: str = ""
+
+
 class RadarConfig(BaseModel):
     general: GeneralConfig = GeneralConfig()
     earthquake: EarthquakeConfig = EarthquakeConfig()
     weather: WeatherConfig = WeatherConfig()
     ui: UIConfig = UIConfig()
+    audio: AudioConfig = AudioConfig()
+    debug: DebugConfig = DebugConfig()
 
 
 # Loader
@@ -182,7 +199,9 @@ def load_config(path: Path | None = None) -> RadarConfig:
         "general": GeneralConfig,
         "earthquake": EarthquakeConfig,
         "weather": WeatherConfig,
-        "ui": UIConfig
+        "ui": UIConfig,
+        "audio": AudioConfig,
+        "debug": DebugConfig,
     }
 
     for key, model in sections.items():

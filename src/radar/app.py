@@ -17,7 +17,8 @@ from typing import Any
 
 import dearpygui.dearpygui as dpg
 
-from radar.config import RadarConfig, THEMES_DIR
+from radar.config import RadarConfig, THEMES_DIR, SOUND_DIR
+from radar.audio import AudioEngine
 from radar.data.earthquake import EarthquakeDiff, EarthquakeEvent, EarthquakeFetcher
 from radar.data.weather import WeatherData, WeatherFetcher
 from radar.data.cities import CityIndex
@@ -72,17 +73,29 @@ class RadarApp:
         self._theme: ThemeData | None = None
         self._active_theme_name: str = config.ui.theme
 
+        # Audio engine
+        self._audio = AudioEngine(
+            sound_dir=SOUND_DIR,
+            volume=config.audio.volume,
+            enabled=config.audio.enabled,
+        )
+
+        # Felt warning state
+        self._felt_warning_time: float = 0.0  # monotonic time when felt was triggered
+        self._felt_warning_duration: float = float(config.audio.felt_warning_duration_s)
+        self._felt_radius_km: float = config.audio.felt_radius_km
+        self._eq_initial_load_done: bool = False  # Suppress audio on first bulk load
+
         # City Index
         logger.info("Loading city database...")
         self._city_index = CityIndex()
-        # Load in background thread to not block startup if large (using thread for now)
-        # For simplicity in this version, we load it synchronously but it's fast (~200ms)
         self._city_index.load()
 
         # Data fetchers
         self._eq_fetcher = EarthquakeFetcher(
             feed_url=config.earthquake.feed_url,
             max_display=config.earthquake.max_display,
+            mock_feed_file=config.debug.mock_feed_file,
         )
         self._wx_fetcher = WeatherFetcher(
             latitude=config.weather.latitude,
@@ -311,10 +324,16 @@ class RadarApp:
                 )
                 self._eq_panel.build(dpg.last_item())
                 
-                # Wire list-to-map selection
+                # Wire list-to-map selection + click sound
                 def _on_eq_click(event_id: str) -> None:
                     if self._map_panel:
+                        # Detect if this is a deselect (clicking the same one again)
+                        is_deselect = (self._map_panel._selected_id == event_id)
                         self._map_panel.set_selection(event_id)
+                        if is_deselect:
+                            self._audio.play("unclick")
+                        else:
+                            self._audio.play("click")
                 self._eq_panel.set_on_click(_on_eq_click)
 
             # Weather Panel (Top Right)
@@ -408,11 +427,38 @@ class RadarApp:
                     self._status_bar.set_last_earthquake_update(now)
                     self._status_bar.set_status(True)
 
+                # Audio alerts for new earthquakes (skip the initial bulk load)
+                if msg.diff.added and self._eq_initial_load_done:
+                    strongest = max(msg.diff.added, key=lambda e: e.magnitude)
+                    self._audio.play_for_magnitude(strongest.magnitude)
+
+                    # Check if any new quake is "felt" at the station
+                    if self._felt_radius_km > 0 and self._eq_panel:
+                        user_lat = self._config.weather.latitude
+                        user_lon = self._config.weather.longitude
+                        for ev in msg.diff.added:
+                            dist = self._eq_panel._haversine(
+                                user_lat, user_lon, ev.latitude, ev.longitude
+                            )
+                            if dist <= self._felt_radius_km:
+                                self._audio.play_felt()
+                                self._felt_warning_time = time.monotonic()
+                                logger.info(
+                                    "FELT: M%.1f at %.0f km from station",
+                                    ev.magnitude, dist,
+                                )
+                                break  # One alert is enough
+
+                # Mark initial load as done after first update
+                if not self._eq_initial_load_done:
+                    self._eq_initial_load_done = True
+
             elif isinstance(msg, _WxUpdate):
                 if self._wx_panel:
                     self._wx_panel.update(msg.data)
 
             elif isinstance(msg, _ThemeReload):
+                self._audio.play("click")
                 self._apply_theme_switch(msg.name)
 
             elif isinstance(msg, _LocationChange):
@@ -440,6 +486,15 @@ class RadarApp:
             self._eq_panel.update_highlights()
             
         if self._map_panel:
+            # Drive the felt warning blink on the map header
+            felt_active = False
+            if self._felt_warning_time > 0:
+                elapsed = time.monotonic() - self._felt_warning_time
+                if elapsed < self._felt_warning_duration:
+                    felt_active = True
+                else:
+                    self._felt_warning_time = 0.0
+            self._map_panel.set_felt_warning(felt_active)
             self._map_panel.update_animations()
 
         # Update clock and FPS
@@ -470,6 +525,7 @@ class RadarApp:
 
         # 5. Start background data fetching
         self._running = True
+        self._audio.start()
         self._start_async_loop()
 
         # 6. Start theme hot-reload watcher
@@ -501,6 +557,9 @@ class RadarApp:
         """Clean shutdown of all subsystems."""
         logger.info("Shutting down...")
         self._running = False
+
+        # Stop audio
+        self._audio.stop()
 
         # Stop theme watcher
         self._theme_watcher.stop()
