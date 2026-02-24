@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 _OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
 
 
-# Data model───────────────────────────────────────────────
+# Data model
 @dataclass(frozen=True, slots=True)
 class WeatherData:
     """Current weather snapshot."""
@@ -96,7 +96,7 @@ class ForecastEntry:
         return WeatherData.weather_description.fget(self)  # type: ignore[attr-defined]
 
 
-# Unit conversion──────────────────────────────────────────
+# Unit conversion
 def _c_to_f(c: float) -> float:
     return round(c * 9 / 5 + 32, 1)
 
@@ -109,7 +109,7 @@ def _mm_to_inches(mm: float) -> float:
     return round(mm * 0.0393701, 2)
 
 
-# Fetcher──────────────────────────────────────────────────
+# Fetcher
 class WeatherFetcher:
     """Async weather data fetcher from Open-Meteo.
 

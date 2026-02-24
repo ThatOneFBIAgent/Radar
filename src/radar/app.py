@@ -355,7 +355,15 @@ class RadarApp:
                     if self._eq_panel:
                         self._eq_panel.highlight_event(event_id)
                 
-                self._map_panel = MapPanel(self._theme, on_hover=_on_map_hover)
+                def _on_map_click(event_id: str) -> None:
+                    if self._eq_panel:
+                        self._eq_panel.select_event(event_id)
+                        
+                self._map_panel = MapPanel(self._theme, on_hover=_on_map_hover, on_click=_on_map_click)
+                self._map_panel.set_user_location(
+                    self._config.weather.latitude,
+                    self._config.weather.longitude
+                )
                 self._map_panel.build(dpg.last_item())
 
             # Splitters
@@ -421,7 +429,7 @@ class RadarApp:
                 if self._eq_panel:
                     self._eq_panel.update(msg.events, new_ids)
                 if self._map_panel:
-                    self._map_panel.update(msg.events)
+                    self._map_panel.update(msg.events, new_ids)
                 if self._status_bar:
                     now = datetime.now(timezone.utc).strftime("%H:%M:%S")
                     self._status_bar.set_last_earthquake_update(now)
@@ -473,6 +481,10 @@ class RadarApp:
                 # Update Earthquake Panel location
                 if self._eq_panel:
                     self._eq_panel.set_user_location(msg.lat, msg.lon)
+
+                # Update Map Panel location
+                if self._map_panel:
+                    self._map_panel.set_user_location(msg.lat, msg.lon)
 
                 # Reset panel display (optional)
                 if self._wx_panel:

@@ -97,9 +97,11 @@ class MapPanel:
         self,
         theme: ThemeData,
         on_hover: callable = None,
+        on_click: callable = None,
     ) -> None:
         self._theme = theme
         self._on_hover = on_hover
+        self._on_click = on_click
         self._draw_tag: int | str | None = None
         self._static_layer: int | str | None = None
         self._dynamic_layer: int | str | None = None
@@ -109,6 +111,10 @@ class MapPanel:
         self._events: list[EarthquakeEvent] = []
         self._land_mask: list[tuple[float, float]] = []  # Cached pixel coordinates for dots
         self._water_mask: list[tuple[float, float]] = []
+        
+        self._new_events: dict[str, float] = {}
+        self._user_lat: float | None = None
+        self._user_lon: float | None = None
         
         # Radar sweep animation state
         self._last_sweep_angle = 0.0
@@ -123,6 +129,11 @@ class MapPanel:
         # Felt warning state
         self._felt_warning: bool = False
         self._felt_warning_tag: int | str | None = None
+
+    def set_user_location(self, lat: float, lon: float) -> None:
+        """Update the reference location for map pin."""
+        self._user_lat = lat
+        self._user_lon = lon
 
     def resize(self, width: int, height: int) -> None:
         """Update panel dimensions, mark as dirty to debounce recalculations."""
@@ -205,7 +216,7 @@ class MapPanel:
                 
                 # Felt warning indicator (hidden by default)
                 self._felt_warning_tag = dpg.add_text(
-                    "  ! FELT", color=(255, 50, 50, 255), show=False
+                    " ! [GROUND MOTION POSSIBLE]", color=(255, 50, 50, 255), show=False
                 )
                 if header_font:
                     dpg.bind_item_font(self._felt_warning_tag, header_font)
@@ -263,9 +274,15 @@ class MapPanel:
     # Note: Radar sweep line drawing is split into `update_animations`.
     # `update` is for data, `update_animations` runs every frame for sweeps.
 
-    def update(self, events: list[EarthquakeEvent]) -> None:
+    def update(self, events: list[EarthquakeEvent], new_ids: list[str] | None = None) -> None:
         """Plot earthquake events and handle interactions."""
         self._events = events
+        
+        if new_ids:
+            now = time.monotonic()
+            for eid in new_ids:
+                self._new_events[eid] = now
+                
         # Static base drawing is separated and should not be wiped away every time an event is added.
         self.update_animations()
 
@@ -319,6 +336,41 @@ class MapPanel:
 
         # 3. Draw Events & tooltips
         self._update_hover()
+        
+        # 4. Draw expanding pulses for new events
+        now = time.monotonic()
+        self._new_events = {k: v for k, v in self._new_events.items() if (now - v) < 3.0}
+        
+        for eid, spawn_time in self._new_events.items():
+            event = next((e for e in self._events if e.id == eid), None)
+            if not event:
+                continue
+            
+            x, y = self._geo_to_pixel(event.longitude, event.latitude)
+            elapsed = now - spawn_time
+            progress = elapsed / 3.0 # 0 to 1
+            
+            radius = 10 + progress * 40
+            alpha = int(255 * (1 - progress))
+            
+            pulse_color = self._theme.color("primary")
+            if event.magnitude >= 4.5:
+                 pulse_color = self._theme.color("danger")
+            elif event.magnitude >= 3.0:
+                 pulse_color = self._theme.color("magnitude_mid")
+            
+            dpg.draw_circle((x, y), radius, color=(*pulse_color[:3], alpha), thickness=2, parent=self._dynamic_layer)
+
+        # 5. Draw user location pin
+        if self._user_lat is not None and self._user_lon is not None:
+            ux, uy = self._geo_to_pixel(self._user_lon, self._user_lat)
+            pin_color = self._theme.color("primary")
+            
+            dpg.draw_circle((ux, uy), 4, color=pin_color, fill=pin_color, parent=self._dynamic_layer)
+            t = (now % 2.0) / 2.0
+            r = 4 + t * 10
+            a = int(255 * (1 - t))
+            dpg.draw_circle((ux, uy), r, color=(*pin_color[:3], a), parent=self._dynamic_layer)
 
     def _update_hover(self) -> None:
         """Check for mouse hover and draw tooltip."""
@@ -348,9 +400,14 @@ class MapPanel:
                     hovered = event
                     break
 
-        # Notify callback if hover changed (simple debounce could be added here if needed)
+        # Notify callbacks
         if self._on_hover and hovered:
              self._on_hover(hovered.id)
+             
+        # Handle click
+        if dpg.is_mouse_button_clicked(dpg.mvMouseButton_Left) and self._draw_tag and dpg.is_item_hovered(self._draw_tag):
+            if hovered and self._on_click:
+                self._on_click(hovered.id)
 
         # 2. Draw Events (with highlight)
         for event in self._events:

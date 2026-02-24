@@ -20,6 +20,7 @@ A cross-platform desktop application with a TUI-inspired aesthetic, built for pe
 <!-- DEMO PLACEHOLDER -->
 <!-- Replace with animated GIF/video of the running application -->
 <!-- ![Radar Demo](assets/demo.gif) -->
+<!-- who knows when i'll get to it, capturing earthquake events is fucking BORING 23/02/2026 -->
 
 </div>
 
@@ -38,7 +39,7 @@ A cross-platform desktop application with a TUI-inspired aesthetic, built for pe
 
 ---
 
-## Screenshots
+## Screenshots (Pre-installed themes)
 
 | Obsidian (Default) | Phosphor (CRT) |
 |---|---|
@@ -47,6 +48,10 @@ A cross-platform desktop application with a TUI-inspired aesthetic, built for pe
 | Arctic (Light) | Ember (Warm) |
 |---|---|
 | ![Arctic](assets/Images/Artic.png) | ![Ember](assets/Images/Ember.png) |
+
+| Terminal (Warm + Rdr sweep) | Matrix (CRT + Rdr sweep) |
+|---|---|
+| ![Terminal](assets/Images/Terminal.png) | ![Matrix](assets/Images/Matrix.png) |
 
 ### Dashboard Overview
 ![With Terminal](assets/Images/WithTerminal.png)
@@ -169,24 +174,7 @@ Themes are JSON files in the `themes/` directory. Create a new file (e.g., `myth
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────┐
-│                  UI Layer (DearPyGui)            │
-│  ┌──────────┐ ┌──────────┐ ┌──────┐ ┌─────────┐  │
-│  │ EQ Panel │ │ WX Panel │ │ Map  │ │ Status  │  │
-│  └────┬─────┘ └────┬─────┘ └───┬──┘ └────┬────┘  │
-├───────┼──────────────┼─────────┼─────────┼───────┤
-│       │    Thread-Safe Queue   │         │       │
-├───────┼──────────────┼─────────┼─────────┼───────┤
-│  ┌────┴─────┐  ┌─────┴────┐                      │
-│  │ EQ Fetch │  │ WX Fetch │    Async Thread      │
-│  └────┬─────┘  └─────┬────┘                      │
-├───────┼──────────────┼───────────────────────────┤
-│  ┌────┴──────────────┴────┐  ┌─────────────────┐ │
-│  │  Rust Accel (optional) │  │ C Signal (opt.) │ │
-│  └────────────────────────┘  └─────────────────┘ │
-└──────────────────────────────────────────────────┘
-```
+![Architecture](assets/Images/Architecture.png)
 
 ---
 
@@ -234,11 +222,11 @@ Radar/
 - [X] Better maps (or a image of one)
 - [ ] Forecast panel (zoom into region)
 - [ ] Historical data graphing
-- [ ] Alert system (sound + notification for threshold events)
+- [X] Alert system (sound + notification for threshold events)
 - [ ] Multiple weather station tracking
 - [ ] Plugin system for custom data sources
 - [ ] Export data (CSV / JSON)
-- [ ] Packaging (PyInstaller / Nuitka)
+- [X] Packaging (PyInstaller / Nuitka), aditional ISS file for installer
 
 ---
 

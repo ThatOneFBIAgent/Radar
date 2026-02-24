@@ -52,6 +52,10 @@ class EarthquakePanel:
         self._scroll_start_time = 0.0
         self._scroll_duration = 0.5  # slightly faster
         self._scroll_event_id: str | None = None # Track the active target
+        
+        # Sorting state
+        self._last_sort_col: int | str | None = None
+        self._last_sort_dir: int = 1
 
     def set_user_location(self, lat: float, lon: float) -> None:
         """Update the reference location for distance calculations."""
@@ -152,7 +156,7 @@ class EarthquakePanel:
 
         if event_id and self._on_click:
             self._on_click(event_id)
-            self.highlight_event(event_id)
+            self.select_event(event_id)
 
     def set_on_click(self, callback: callable) -> None:
         """Set the callback for when an earthquake row is clicked."""
@@ -174,6 +178,15 @@ class EarthquakePanel:
         col_id = specs[0][0]
         direction = specs[0][1] # 1 is asc, -1 is desc
         
+        self._last_sort_col = col_id
+        self._last_sort_dir = direction
+        self._apply_sort()
+
+    def _apply_sort(self) -> None:
+        """Apply the saved sort configuration to the current events."""
+        if not self._last_sort_col:
+            return
+
         # Helper for distance sort
         def dist_sort(e: EarthquakeEvent) -> float:
             if self._user_lat is None or self._user_lon is None:
@@ -191,12 +204,12 @@ class EarthquakePanel:
             self._col_tags["TYPE"]: lambda e: e.mag_type if e.mag_type else "",
         }
 
-        sort_key = key_map.get(col_id)
+        sort_key = key_map.get(self._last_sort_col)
         if sort_key:
-            reverse = direction < 0
+            reverse = self._last_sort_dir < 0
             self._events.sort(key=sort_key, reverse=reverse)
-            # Re-render table
-            self.update(self._events)
+            # Re-render table, don't call update() directly to avoid recursion
+            self._render_rows(self._events)
             
     def update(self, events: list[EarthquakeEvent], new_ids: list[str] | None = None) -> None:
         """Refresh the table with new event data."""
@@ -204,6 +217,15 @@ class EarthquakePanel:
 
         if new_ids:
             self._highlighter.add_many(new_ids)
+
+        # Re-apply sorting if configured
+        if self._last_sort_col:
+            self._apply_sort()
+        else:
+            self._render_rows(self._events)
+            
+    def _render_rows(self, events: list[EarthquakeEvent]) -> None:
+        """Render the rows for the table without resetting sorting."""
 
         # Clear existing rows
         if self._table_tag is not None:
@@ -305,8 +327,10 @@ class EarthquakePanel:
         if row and dpg.does_item_exist(row):
             dpg.bind_item_theme(row, self._highlight_theme)
             
-            # Auto-scroll to row (approximate)
-            self.scroll_to(event_id)
+    def select_event(self, event_id: str) -> None:
+        """Highlight and scroll to a specific event (e.g. on click)."""
+        self.highlight_event(event_id)
+        self.scroll_to(event_id)
 
     def scroll_to(self, event_id: str) -> None:
         """Initialize a smooth scroll to the specified event."""

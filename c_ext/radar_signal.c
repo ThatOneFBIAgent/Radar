@@ -10,9 +10,6 @@
 
 #include "radar_signal.h"
 #include <math.h>
-#include <stdlib.h>
-#include <string.h>
-
 
 /*
  * Exponential Moving Average (EMA) smoothing.
