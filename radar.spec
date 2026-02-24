@@ -13,7 +13,7 @@ a = Analysis(
         ('src/radar/data/world_polygons.json', 'radar/data'),
         ('sound', 'sound'),
     ],
-    hiddenimports=['dearpygui'],
+    hiddenimports=['dearpygui', 'miniaudio', 'cffi'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -33,7 +33,7 @@ A cross-platform desktop application with a TUI-inspired aesthetic, built for pe
 | **Seismic Monitor** | Live earthquake feed from USGS — magnitude, depth, location, coordinates, timestamps |
 | **Weather Station** | Real-time weather from Open-Meteo — temperature, wind, pressure, humidity, cloud cover |
 | **Seismic Map** | Mercator-projected world map with magnitude-coded earthquake plotting |
-| **Theme Engine** | 4 built-in themes (Obsidian, Phosphor, Arctic, Ember) — JSON-configurable, hot-reloadable |
+| **Theme Engine** | 6 built-in themes (Obsidian, Phosphor, Arctic, Ember, Terminal, Matrix) — JSON-configurable, hot-reloadable |
 | **Performance** | Rust extension for fast JSON parsing, C extension for signal smoothing |
 | **Architecture** | Non-blocking async data fetching, diff-based UI updates, zero flicker |
 
@@ -99,10 +99,24 @@ location_name = "Houston, TX"
 poll_interval = 120         # seconds (minimum 60)
 
 [ui]
-theme = "obsidian"          # obsidian, phosphor, arctic, ember
+theme = "obsidian"          # obsidian, phosphor, arctic, ember, terminal, matrix
 font_size = 15
 animations = true
+window_width = 1400         # 0 = auto
+window_height = 900
+start_maximized = true      # If true, ignores window sizes
+
+[audio]
+enabled = true
+volume = 0.7
+felt_radius_km = 300.0      # Play alert sound if quake is within this radius
+felt_warning_duration_s = 240 # How long warning stays on screen
+
+[debug]
+mock_feed_file = ""         # Set to path like "mock/sample_quakes.geojson" to test without live updates
 ```
+> [!NOTE]
+> The alarm system is based off of the weather station location, it is recommended you set this to your location, or closeby.
 
 ### Available USGS Feeds
 
@@ -144,6 +158,9 @@ Themes are JSON files in the `themes/` directory. Create a new file (e.g., `myth
     "magnitude_high":   "#FF8C00",
     "magnitude_severe": "#FF3366"
   },
+  "map_land_char": "■",
+  "map_water_char": ".",
+  "map_radar_sweep": true,
   "borders": { "style": "thin", "radius": 4, "thickness": 1 },
   "animation": {
     "transition_ms": 200,
@@ -169,6 +186,15 @@ Themes are JSON files in the `themes/` directory. Create a new file (e.g., `myth
 | `success` / `warning` / `danger` | Status indicators |
 | `border` / `border_focus` | Panel and input borders |
 | `magnitude_low/mid/high/severe` | Earthquake severity coloring (< 3, < 5, < 7, ≥ 7) |
+
+### Advanced Theme Keys
+
+You can also customize the scanner's map rendering within the theme file:
+| Key | Purpose |
+|---|---|
+| `map_land_char` | The character to use for drawing landmasses (e.g. `"■"`, `"*"`) |
+| `map_water_char` | The character to use for drawing oceans (e.g. `"."`, `"~"`) |
+| `map_radar_sweep` | Set to `true` to enable the spinning radar gradient over the map |
 
 ---
 
@@ -214,8 +240,8 @@ Radar/
 
 - [x] Core earthquake monitoring with USGS feed
 - [x] Real-time weather integration with Open-Meteo
-- [x] Simplified world map visualization
-- [x] Theme system with 4 built-in themes
+- [x] Simplified world map visualization with sweeping radar
+- [x] Theme system with 6 built-in themes
 - [x] Theme hot-reload via file watcher
 - [x] Rust accelerator module (PyO3)
 - [x] C signal processing module (cffi)
