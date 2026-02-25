@@ -63,6 +63,11 @@ class _LocationChange:
         self.name = name
 
 
+class _ConnectionStatus:
+    def __init__(self, state: str) -> None:
+        self.state = state
+
+
 class RadarApp:
     """Main application class — ties everything together."""
 
@@ -90,6 +95,8 @@ class RadarApp:
         logger.info("Loading city database...")
         self._city_index = CityIndex()
         self._city_index.load()
+
+        self._force_eq_fetch = False
 
         # Data fetchers
         self._eq_fetcher = EarthquakeFetcher(
@@ -262,13 +269,16 @@ class RadarApp:
                 now = time.monotonic()
 
                 # Earthquake fetch
-                if now - last_eq >= eq_interval:
+                if now - last_eq >= eq_interval or self._force_eq_fetch:
+                    self._force_eq_fetch = False
                     try:
                         events, diff = await self._eq_fetcher.fetch()
                         self._queue.put(_EqUpdate(events, diff))
                         last_eq = now
                     except Exception as e:
                         logger.error("Earthquake fetch loop error: %s", e)
+                        self._queue.put(_ConnectionStatus("OFFLINE"))
+                        last_eq = now
 
                 # Weather fetch
                 if now - last_wx >= wx_interval or self._wx_fetcher._last_fetch == 0.0:
@@ -376,6 +386,7 @@ class RadarApp:
                     self._theme,
                     available_themes=get_available_themes(),
                     on_theme_change=lambda name: self._queue.put(_ThemeReload(name)),
+                    on_retry=self._force_retry,
                 )
                 self._status_bar.build(dpg.last_item())
 
@@ -433,7 +444,7 @@ class RadarApp:
                 if self._status_bar:
                     now = datetime.now(timezone.utc).strftime("%H:%M:%S")
                     self._status_bar.set_last_earthquake_update(now)
-                    self._status_bar.set_status(True)
+                    self._status_bar.set_status("ONLINE")
 
                 # Audio alerts for new earthquakes (skip the initial bulk load)
                 if msg.diff.added and self._eq_initial_load_done:
@@ -468,6 +479,10 @@ class RadarApp:
             elif isinstance(msg, _ThemeReload):
                 self._audio.play("click")
                 self._apply_theme_switch(msg.name)
+
+            elif isinstance(msg, _ConnectionStatus):
+                if self._status_bar:
+                    self._status_bar.set_status(msg.state)
 
             elif isinstance(msg, _LocationChange):
                 logger.info("Changing location to: %s", msg.name)
@@ -513,6 +528,23 @@ class RadarApp:
         if self._status_bar:
             self._status_bar.update_clock()
             self._status_bar.update_fps(dpg.get_frame_rate())
+
+    def _force_retry(self) -> None:
+        # Prevent API throttling by spamming manual fetch
+        if self._status_bar and "status" in self._status_bar._tags:
+            current_status = str(dpg.get_value(self._status_bar._tags["status"]))
+            if "CONNECTING" in current_status:
+                return
+                
+            now = time.monotonic()
+            if "ONLINE" in current_status:
+                if hasattr(self, "_last_manual_retry") and now - self._last_manual_retry < 45.0:
+                    return
+                self._last_manual_retry = now
+
+        self._force_eq_fetch = True
+        if self._status_bar:
+            self._status_bar.set_status("CONNECTING")
 
     # Public interface
     def run(self) -> None:

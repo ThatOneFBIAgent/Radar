@@ -216,7 +216,7 @@ class MapPanel:
                 
                 # Felt warning indicator (hidden by default)
                 self._felt_warning_tag = dpg.add_text(
-                    " ! [GROUND MOTION POSSIBLE]", color=(255, 50, 50, 255), show=False
+                    " ! [GROUND MOTION POSSIBLE]", color=self._theme.color("danger"), show=False
                 )
                 if header_font:
                     dpg.bind_item_font(self._felt_warning_tag, header_font)
@@ -315,7 +315,8 @@ class MapPanel:
             t = time.monotonic()
             angle = (t % 4.0) / 4.0 * math.pi * 2
             
-            sweep_color = (*self._theme.color("success")[:3], 180)
+            base_sweep_color = self._theme.colors.get("map_sweep", self._theme.color("success"))
+            sweep_color = (*base_sweep_color[:3], 180)
             
             end_x = center_x + math.cos(angle) * radius
             end_y = center_y + math.sin(angle) * radius
@@ -328,7 +329,7 @@ class MapPanel:
             trail_x = center_x + math.cos(trail_angle) * radius
             trail_y = center_y + math.sin(trail_angle) * radius
             
-            trail_color = (*self._theme.color("success")[:3], 30)
+            trail_color = (*base_sweep_color[:3], 30)
             dpg.draw_triangle(
                 (center_x, center_y), (end_x, end_y), (trail_x, trail_y),
                 color=(0, 0, 0, 0), fill=trail_color, parent=self._dynamic_layer
@@ -339,19 +340,45 @@ class MapPanel:
         
         # 4. Draw expanding pulses for new events
         now = time.monotonic()
-        self._new_events = {k: v for k, v in self._new_events.items() if (now - v) < 3.0}
+        # Waves take up to an hour to fully propagate across the world map
+        self._new_events = {k: v for k, v in self._new_events.items() if (now - v) < 3600.0}
         
         for eid, spawn_time in self._new_events.items():
             event = next((e for e in self._events if e.id == eid), None)
             if not event:
                 continue
             
-            x, y = self._geo_to_pixel(event.longitude, event.latitude)
-            elapsed = now - spawn_time
-            progress = elapsed / 3.0 # 0 to 1
+            # Simulate wave travel distance until magnitude attenuates down to ~1.0
+            effective_mag = max(0.0, event.magnitude - 1.0)
             
-            radius = 10 + progress * 40
-            alpha = int(255 * (1 - progress))
+            # Peak radius scaled physically. Earth circ. ~40,000km plotted on map width.
+            # Convert 40,000 km to pixels to get our dynamic px/km ratio
+            px_per_km = self._width / 40075.0 if self._width > 0 else 0.02
+            
+            # Attenuation target distance (approx km scale roughly based on magnitude squared)
+            # A M9.0 quake might be "felt" roughly 1500-2000 km away.
+            target_distance_km = 20.0 * (effective_mag ** 2.2) 
+            target_radius = 10.0 + (target_distance_km * px_per_km)
+            
+            # Realistic wave velocity (P-waves ~6 km/s, multiplied x 4 time scale = 24 km/s visual)
+            speed_km_sec = 24.0 
+            speed_px_sec = speed_km_sec * px_per_km
+            
+            wave_duration = max(4.0, (target_radius - 10.0) / max(0.001, speed_px_sec))
+            
+            elapsed = now - spawn_time
+            if elapsed > wave_duration:
+                continue
+                
+            progress = min(1.0, elapsed / wave_duration) # 0 to 1
+            
+            x, y = self._geo_to_pixel(event.longitude, event.latitude)
+            
+            # Primary P-Wave
+            radius_p = 10.0 + progress * (target_radius - 10.0)
+            
+            # Fade out using an easing curve so waves stay sharp before cleanly dissolving
+            alpha_p = max(0, min(255, int(255 * (1.0 - (progress ** 1.5)))))
             
             pulse_color = self._theme.color("primary")
             if event.magnitude >= 4.5:
@@ -359,7 +386,17 @@ class MapPanel:
             elif event.magnitude >= 3.0:
                  pulse_color = self._theme.color("magnitude_mid")
             
-            dpg.draw_circle((x, y), radius, color=(*pulse_color[:3], alpha), thickness=2, parent=self._dynamic_layer)
+            # Fill the inner area with a very faint, trailing background color
+            fill_alpha = int(alpha_p * 0.15)
+            
+            dpg.draw_circle(
+                (x, y), 
+                radius_p, 
+                color=(*pulse_color[:3], alpha_p), 
+                fill=(*pulse_color[:3], fill_alpha), 
+                thickness=2, 
+                parent=self._dynamic_layer
+            )
 
         # 5. Draw user location pin
         if self._user_lat is not None and self._user_lon is not None:
@@ -497,11 +534,12 @@ class MapPanel:
                 # Blink: toggle visibility based on time (~2Hz)
                 blink = int(time.monotonic() * 4) % 2 == 0
                 dpg.configure_item(self._felt_warning_tag, show=blink)
-                # Pulse the color: red with varying alpha
+                # Pulse the color: danger with varying alpha
                 pulse = (math.sin(time.monotonic() * 6) + 1.0) / 2.0
                 alpha = int(150 + pulse * 105)
+                base_color = self._theme.color("danger")
                 dpg.configure_item(
-                    self._felt_warning_tag, color=(255, 50, 50, alpha)
+                    self._felt_warning_tag, color=(*base_color[:3], alpha)
                 )
             else:
                 dpg.configure_item(self._felt_warning_tag, show=False)

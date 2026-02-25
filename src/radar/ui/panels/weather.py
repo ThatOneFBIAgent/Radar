@@ -100,10 +100,12 @@ class WeatherPanel:
                 header = dpg.add_text("[WXA] WEATHER STATION")
                 if header_font:
                     dpg.bind_item_font(header, header_font)
-                dpg.add_spacer(width=-1)
+                dpg.add_text("—", color=self._theme.color("border"))
                 self._tags["location"] = dpg.add_text(
-                    self._location, color=self._theme.color("text_dim")
+                    self._location.upper(), color=self._theme.color("primary")
                 )
+                if header_font:
+                    dpg.bind_item_font(self._tags["location"], header_font)
 
             dpg.add_separator()
             

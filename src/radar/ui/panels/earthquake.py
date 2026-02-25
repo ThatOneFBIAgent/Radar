@@ -114,8 +114,10 @@ class EarthquakePanel:
                 if header_font:
                     dpg.bind_item_font(self._header_tag, header_font)
 
-                dpg.add_spacer(width=-1)
-                self._count_tag = dpg.add_text("0 events", color=self._theme.color("text_dim"))
+                dpg.add_text("—", color=self._theme.color("border"))
+                self._count_tag = dpg.add_text("DISPLAYING 0 EVENT(S)", color=self._theme.color("primary"))
+                if header_font:
+                    dpg.bind_item_font(self._count_tag, header_font)
 
             dpg.add_separator()
 
@@ -308,7 +310,7 @@ class EarthquakePanel:
 
         # Update count
         if self._count_tag:
-            dpg.set_value(self._count_tag, f"{len(events)} events")
+            dpg.set_value(self._count_tag, f"DISPLAYING {len(events)} EVENT(S)")
 
     def highlight_event(self, event_id: str) -> None:
         """Highlight (select) a specific event row."""

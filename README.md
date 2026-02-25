@@ -246,11 +246,10 @@ Radar/
 - [x] Rust accelerator module (PyO3)
 - [x] C signal processing module (cffi)
 - [X] Better maps (or a image of one)
-- [ ] Forecast panel (zoom into region)
-- [ ] Historical data graphing
+- [X] P-wave simulation
 - [X] Alert system (sound + notification for threshold events)
 - [ ] Multiple weather station tracking
-- [ ] Plugin system for custom data sources
+- [ ] Plugin system for custom data sources 
 - [ ] Export data (CSV / JSON)
 - [X] Packaging (PyInstaller / Nuitka), aditional ISS file for installer
 

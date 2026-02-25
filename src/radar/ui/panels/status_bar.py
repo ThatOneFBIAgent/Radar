@@ -26,11 +26,17 @@ class StatusBar:
         theme: ThemeData,
         available_themes: list[str] | None = None,
         on_theme_change: Callable[[str], None] | None = None,
+        on_retry: Callable[[], None] | None = None,
     ) -> None:
         self._theme = theme
         self._available = available_themes or get_available_themes()
         self._on_theme_change = on_theme_change
+        self._on_retry = on_retry
         self._tags: dict[str, int | str] = {}
+
+    def _status_clicked(self, sender: int | str, app_data: Any, user_data: Any) -> None:
+        if self._on_retry:
+            self._on_retry()
 
     def build(self, parent: int | str) -> None:
         """Create the status bar layout."""
@@ -41,10 +47,14 @@ class StatusBar:
             no_scrollbar=True,
         ):
             with dpg.group(horizontal=True):
+                with dpg.item_handler_registry() as hr:
+                    dpg.add_item_clicked_handler(callback=self._status_clicked)
+
                 # Connection indicator
                 self._tags["status"] = dpg.add_text(
                     "(*) ONLINE", color=self._theme.color("success")
                 )
+                dpg.bind_item_handler_registry(self._tags["status"], hr)
 
                 dpg.add_text(" | ", color=self._theme.color("border"))
 
@@ -110,15 +120,18 @@ class StatusBar:
         if "last_eq" in self._tags:
             dpg.set_value(self._tags["last_eq"], timestamp)
 
-    def set_status(self, online: bool) -> None:
+    def set_status(self, state: str) -> None:
         """Set connection status indicator."""
         if "status" in self._tags:
-            if online:
+            if state == "ONLINE":
                 dpg.set_value(self._tags["status"], "(*) ONLINE")
                 dpg.configure_item(self._tags["status"], color=self._theme.color("success"))
-            else:
+            elif state == "OFFLINE":
                 dpg.set_value(self._tags["status"], "(*) OFFLINE")
                 dpg.configure_item(self._tags["status"], color=self._theme.color("danger"))
+            elif state == "CONNECTING":
+                dpg.set_value(self._tags["status"], "(*) CONNECTING...")
+                dpg.configure_item(self._tags["status"], color=self._theme.color("warning"))
 
     def update_theme(self, theme: ThemeData, soft: bool = False) -> None:
         """Apply a new theme to the status bar."""
@@ -130,5 +143,10 @@ class StatusBar:
 
         if "status" in self._tags and dpg.does_item_exist(self._tags["status"]):
             current = dpg.get_value(self._tags["status"])
-            color = self._theme.color("success") if "ONLINE" in str(current) else self._theme.color("danger")
+            if "ONLINE" in str(current):
+                color = self._theme.color("success")
+            elif "OFFLINE" in str(current):
+                color = self._theme.color("danger")
+            else:
+                color = self._theme.color("warning")
             dpg.configure_item(self._tags["status"], color=color)
