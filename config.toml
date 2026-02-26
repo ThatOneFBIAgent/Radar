@@ -57,6 +57,10 @@ window_height = 900
 # Start maximized (this ignores window_width and window_height if true)
 start_maximized = true
 
+# Divided screen split
+split_x = 0.75
+split_y = 0.4
+
 # Enable animations
 animations = true
 

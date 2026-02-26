@@ -53,16 +53,13 @@ A cross-platform desktop application with a TUI-inspired aesthetic, built for pe
 |---|---|
 | ![Terminal](assets/Images/Terminal.png) | ![Matrix](assets/Images/Matrix.png) |
 
-### Dashboard Overview
-![With Terminal](assets/Images/WithTerminal.png)
-
 ---
 
 ## Quick Start
 
 ```bash
 # Clone
-git clone https://github.com/yourusername/radar.git
+git clone https://github.com/ThatOneFBIAgent/radar.git
 cd radar
 
 # Install
@@ -104,6 +101,8 @@ font_size = 15
 animations = true
 window_width = 1400         # 0 = auto
 window_height = 900
+split_x = 0.75              # 0 = full width, 1 = full height (from left to right)
+split_y = 0.4               # 0 = full width, 1 = full height (from top to bottom)
 start_maximized = true      # If true, ignores window sizes
 
 [audio]

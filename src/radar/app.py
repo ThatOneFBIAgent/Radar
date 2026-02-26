@@ -117,7 +117,11 @@ class RadarApp:
         self._status_bar: StatusBar | None = None
 
         # Layout Manager
-        self._layout = LayoutManager(on_resize=self._on_layout_resize)
+        self._layout = LayoutManager(
+            on_resize=self._on_layout_resize,
+            initial_split_x=config.ui.split_x,
+            initial_split_y=config.ui.split_y,
+        )
 
         # Theme watcher
         self._theme_watcher = ThemeWatcher(
@@ -417,9 +421,12 @@ class RadarApp:
         if dpg.does_item_exist("status_bar_container"):
             dpg.configure_item("status_bar_container", width=total_w, height=32, pos=(0, total_h - 32))
 
-        # Notify map panel to redraw (it needs explicit resize)
+        # Notify map and weather panel to redraw (they need explicit resize)
         if self._map_panel:
             self._map_panel.resize(map_w, map_h)
+            
+        if self._wx_panel:
+            self._wx_panel.resize(wx_w, wx_h)
 
     def _on_location_change(self, lat: float, lon: float, name: str) -> None:
         """Callback from weather panel when city is selected."""
@@ -436,11 +443,13 @@ class RadarApp:
                 break
 
             if isinstance(msg, _EqUpdate):
-                new_ids = [e.id for e in msg.diff.added] if msg.diff.added else None
+                new_ids = [e.id for e in msg.diff.added] if msg.diff.added else []
+                updated_ids = [e.id for e in msg.diff.updated] if hasattr(msg.diff, 'updated') and msg.diff.updated else []
+                all_new = new_ids + updated_ids
                 if self._eq_panel:
-                    self._eq_panel.update(msg.events, new_ids)
+                    self._eq_panel.update(msg.events, all_new)
                 if self._map_panel:
-                    self._map_panel.update(msg.events, new_ids)
+                    self._map_panel.update(msg.events, all_new)
                 if self._status_bar:
                     now = datetime.now(timezone.utc).strftime("%H:%M:%S")
                     self._status_bar.set_last_earthquake_update(now)
@@ -467,6 +476,10 @@ class RadarApp:
                                     ev.magnitude, dist,
                                 )
                                 break  # One alert is enough
+
+                # Play update tick if there are updates
+                if hasattr(msg.diff, 'updated') and msg.diff.updated and self._eq_initial_load_done:
+                    self._audio.play("update")
 
                 # Mark initial load as done after first update
                 if not self._eq_initial_load_done:
@@ -501,9 +514,9 @@ class RadarApp:
                 if self._map_panel:
                     self._map_panel.set_user_location(msg.lat, msg.lon)
 
-                # Reset panel display (optional)
-                if self._wx_panel:
-                    self._wx_panel.set_location_name(msg.name)
+        # Process animations
+        if self._wx_panel:
+            self._wx_panel._frame_tick()
 
         # Process theme transitions
         self._update_theme_transition()

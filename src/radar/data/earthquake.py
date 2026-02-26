@@ -109,6 +109,7 @@ class EarthquakeDiff:
 
     added: list[EarthquakeEvent] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)    # IDs
+    updated: list[EarthquakeEvent] = field(default_factory=list)
     unchanged: int = 0
 
 
@@ -120,12 +121,20 @@ def diff_events(
     old_ids = {e.id for e in old}
     new_ids = {e.id for e in new}
     new_map = {e.id: e for e in new}
+    old_map = {e.id: e for e in old}
 
     added = [new_map[eid] for eid in (new_ids - old_ids)]
     removed = list(old_ids - new_ids)
-    unchanged = len(old_ids & new_ids)
+    
+    updated = []
+    unchanged = 0
+    for eid in (old_ids & new_ids):
+        if old_map[eid] != new_map[eid]:
+            updated.append(new_map[eid])
+        else:
+            unchanged += 1
 
-    return EarthquakeDiff(added=added, removed=removed, unchanged=unchanged)
+    return EarthquakeDiff(added=added, removed=removed, updated=updated, unchanged=unchanged)
 
 
 # Fetcher──────────────────────────────────────────────────
@@ -202,6 +211,7 @@ class EarthquakeFetcher:
             if self._mock_pool:
                 # Release one event from the pool
                 new_event = self._mock_pool.pop()
+                self._mock_released = [e for e in self._mock_released if e.id != new_event.id]
                 self._mock_released.append(new_event)
                 logger.info(
                     "Mock drip: released M%.1f '%s' (%d remaining)",
@@ -270,10 +280,10 @@ class EarthquakeFetcher:
         diff = diff_events(self._previous, events)
         self._previous = events
 
-        if diff.added:
+        if diff.added or diff.updated:
             logger.info(
-                "Earthquake update: +%d new, -%d removed, %d unchanged",
-                len(diff.added), len(diff.removed), diff.unchanged,
+                "Earthquake update: %d added, %d updated, %d removed, %d unchanged",
+                len(diff.added), len(diff.updated), len(diff.removed), diff.unchanged,
             )
 
         return events, diff

@@ -142,6 +142,8 @@ class UIConfig(BaseModel):
     font_size: int = Field(default=15, ge=8, le=48)
     window_width: int = Field(default=1400, ge=0)
     window_height: int = Field(default=900, ge=0)
+    split_x: float = Field(default=0.6, ge=0.2, le=0.8)
+    split_y: float = Field(default=0.6, ge=0.2, le=0.8)
     start_maximized: bool = False
     animations: bool = True
     animation_speed: float = Field(default=1.0, ge=0.1, le=5.0)

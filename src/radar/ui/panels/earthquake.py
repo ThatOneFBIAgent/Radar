@@ -114,7 +114,7 @@ class EarthquakePanel:
                 if header_font:
                     dpg.bind_item_font(self._header_tag, header_font)
 
-                dpg.add_text("—", color=self._theme.color("border"))
+                dpg.add_text(" | ", color=self._theme.color("border"))
                 self._count_tag = dpg.add_text("DISPLAYING 0 EVENT(S)", color=self._theme.color("primary"))
                 if header_font:
                     dpg.bind_item_font(self._count_tag, header_font)

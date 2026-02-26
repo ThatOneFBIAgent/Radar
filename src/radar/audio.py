@@ -46,6 +46,7 @@ class AudioEngine:
         "level_2":  ["level_2.wav", "level_2.mp3"],
         "level_3":  ["level_3.wav", "level_3.mp3"],
         "felt":     ["felt.wav", "felt.mp3"],
+        "update":   ["update.mp3", "update.wav"],
     }
 
     def __init__(
@@ -117,9 +118,10 @@ class AudioEngine:
                         # Store as int16 array for fast slicing
                         self._buffers[name] = array.array("h", decoded.samples)
                         logger.debug("Loaded sound: %s (%s, %d samples)", name, filename, len(decoded.samples))
+                        break  # Stop checking candidates on success
                     except Exception as e:
                         logger.warning("Failed to decode %s: %s", filename, e)
-                    break
+                        # Don't break here, try next candidate
 
     def _stream_generator(self):
         """Audio stream generator — yields mixed audio frames forever."""

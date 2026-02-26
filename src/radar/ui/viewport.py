@@ -19,14 +19,16 @@ logger = logging.getLogger(__name__)
 _font_registry_tag: int | str | None = None
 _default_font_tag: int | str | None = None
 _header_font_tag: int | str | None = None
+_large_font_tag: int | str | None = None
 
 
 def _setup_fonts(font_size: int, header_scale: float) -> None:
     """Load JetBrains Mono (or fallback) into DearPyGui font registry."""
-    global _font_registry_tag, _default_font_tag, _header_font_tag
+    global _font_registry_tag, _default_font_tag, _header_font_tag, _large_font_tag
 
     font_path = FONTS_DIR / "JetBrainsMono-Regular.ttf"
     header_size = int(font_size * header_scale)
+    large_size = int(font_size * (header_scale * 1.5))
 
     with dpg.font_registry() as reg:
         _font_registry_tag = reg
@@ -35,9 +37,10 @@ def _setup_fonts(font_size: int, header_scale: float) -> None:
             # Create fonts and load character ranges
             _default_font_tag = dpg.add_font(str(font_path), font_size)
             _header_font_tag = dpg.add_font(str(font_path), header_size)
+            _large_font_tag = dpg.add_font(str(font_path), large_size)
             
             # Add character ranges to both fonts for better Unicode support
-            for tag in [_default_font_tag, _header_font_tag]:
+            for tag in [_default_font_tag, _header_font_tag, _large_font_tag]:
                 dpg.add_font_range_hint(dpg.mvFontRangeHint_Default, parent=tag)
                 
                 # Explicitly add Latin-1 Supplement (0080-00FF)
@@ -51,6 +54,7 @@ def _setup_fonts(font_size: int, header_scale: float) -> None:
             # Use built-in ProggyClean as fallback
             _default_font_tag = None
             _header_font_tag = None
+            _large_font_tag = None
             logger.warning(
                 "JetBrainsMono not found at %s — using default font. "
                 "Download from https://www.jetbrains.com/lp/mono/",
@@ -64,6 +68,11 @@ def _setup_fonts(font_size: int, header_scale: float) -> None:
 def get_header_font() -> int | str | None:
     """Return the header font tag, or None for default."""
     return _header_font_tag
+
+
+def get_large_font() -> int | str | None:
+    """Return the large font tag, or None for default."""
+    return _large_font_tag
 
 
 # Viewport creation
