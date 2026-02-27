@@ -9,9 +9,14 @@ from __future__ import annotations
 
 import array
 import logging
+import time
 import threading
+from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from radar.data.earthquake import EarthquakeEvent
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +59,17 @@ class AudioEngine:
         sound_dir: Path,
         volume: float = 0.7,
         enabled: bool = True,
+        delays: dict[str, float] | None = None,
     ) -> None:
         self._sound_dir = sound_dir
         self._volume = max(0.0, min(1.0, volume))
         self._enabled = enabled and _HAS_AUDIO
-        self._device: Any | None = None
         self._lock = threading.Lock()
+        
+        # Delay management
+        self._delays = delays or {}
+        self._event_queue: deque[tuple[str, Any]] = deque()
+        self._next_release_time = 0.0
 
         # Pre-decoded audio: name -> array.array("h", ...) of int16 samples
         self._buffers: dict[str, array.array] = {}
@@ -198,6 +208,65 @@ class AudioEngine:
     def play_felt(self) -> None:
         """Play the 'felt' alert sound."""
         self.play("felt")
+
+    def queue_earthquake(self, event: EarthquakeEvent) -> None:
+        """Add an earthquake event to the playback queue."""
+        self._event_queue.append(("earthquake", event))
+
+    def queue_felt(self) -> None:
+        """Add a 'felt' alert to the playback queue."""
+        self._event_queue.append(("felt", None))
+
+    def queue_update(self) -> None:
+        """Add an update tick to the playback queue."""
+        self._event_queue.append(("update", None))
+
+    def tick(self) -> tuple[list[EarthquakeEvent], bool]:
+        """Update the queue state and release events when delays expire.
+        
+        Returns:
+            tuple: (list of released EarthquakeEvents, bool if felt alert was triggered)
+        """
+        released = []
+        felt_triggered = False
+        if not self._event_queue:
+            return released, felt_triggered
+
+        now = time.monotonic()
+        if now < self._next_release_time:
+            return released, felt_triggered
+
+        # Release the next item from the queue
+        item_type, data = self._event_queue.popleft()
+        delay = 0.0
+
+        if item_type == "earthquake":
+            mag = data.magnitude
+            if mag < 3.0:
+                self.play("level_0")
+                delay = self._delays.get("level_0", 1.2)
+            elif mag < 5.0:
+                self.play("level_1")
+                delay = self._delays.get("level_1", 1.7)
+            elif mag < 7.0:
+                self.play("level_2")
+                delay = self._delays.get("level_2", 2.3)
+            else:
+                self.play("level_3")
+                delay = self._delays.get("level_3", 2.3)
+            released.append(data)
+            
+        elif item_type == "felt":
+            self.play_felt()
+            delay = self._delays.get("felt", 9.0)
+            felt_triggered = True
+            
+        elif item_type == "update":
+            self.play("update")
+            delay = self._delays.get("update", 0.5)
+
+        self._next_release_time = now + delay
+        return released, felt_triggered
 
     def set_volume(self, volume: float) -> None:
         """Set the master volume (0.0 to 1.0)."""

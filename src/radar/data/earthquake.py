@@ -209,14 +209,17 @@ class EarthquakeFetcher:
                 self._load_mock_pool()
 
             if self._mock_pool:
-                # Release one event from the pool
-                new_event = self._mock_pool.pop()
-                self._mock_released = [e for e in self._mock_released if e.id != new_event.id]
-                self._mock_released.append(new_event)
-                logger.info(
-                    "Mock drip: released M%.1f '%s' (%d remaining)",
-                    new_event.magnitude, new_event.place, len(self._mock_pool),
-                )
+                # Release events with the same timestamp from the pool
+                # Pool is reversed, so we look at the end
+                burst_time = self._mock_pool[-1].time
+                while self._mock_pool and self._mock_pool[-1].time == burst_time:
+                    new_event = self._mock_pool.pop()
+                    self._mock_released = [e for e in self._mock_released if e.id != new_event.id]
+                    self._mock_released.append(new_event)
+                    logger.info(
+                        "Mock drip: released M%.1f '%s' (%d remaining)",
+                        new_event.magnitude, new_event.place, len(self._mock_pool),
+                    )
             
             self._last_fetch = time.monotonic()
             events = list(self._mock_released)

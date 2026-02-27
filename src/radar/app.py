@@ -83,7 +83,11 @@ class RadarApp:
             sound_dir=SOUND_DIR,
             volume=config.audio.volume,
             enabled=config.audio.enabled,
+            delays=config.audio.sfx_delays,
         )
+
+        # Event state
+        self._visible_events: list[EarthquakeEvent] = []
 
         # Felt warning state
         self._felt_warning_time: float = 0.0  # monotonic time when felt was triggered
@@ -443,45 +447,46 @@ class RadarApp:
                 break
 
             if isinstance(msg, _EqUpdate):
-                new_ids = [e.id for e in msg.diff.added] if msg.diff.added else []
-                updated_ids = [e.id for e in msg.diff.updated] if hasattr(msg.diff, 'updated') and msg.diff.updated else []
-                all_new = new_ids + updated_ids
-                if self._eq_panel:
-                    self._eq_panel.update(msg.events, all_new)
-                if self._map_panel:
-                    self._map_panel.update(msg.events, all_new)
+                # 1. Update visible events state (removals and updates)
+                current_ids = {e.id for e in msg.events}
+                self._visible_events = [e for e in self._visible_events if e.id in current_ids]
+                
+                # Metadata updates for already visible events
+                updated_map = {e.id: e for e in msg.diff.updated} if hasattr(msg.diff, 'updated') else {}
+                self._visible_events = [updated_map.get(e.id, e) for e in self._visible_events]
+
+                # 2. Handle additions
+                if msg.diff.added:
+                    if not self._eq_initial_load_done:
+                        # Initial load: release everything immediately
+                        self._visible_events.extend(msg.diff.added)
+                    else:
+                        # Queue for delayed release
+                        user_lat = self._config.weather.latitude
+                        user_lon = self._config.weather.longitude
+                        for ev in msg.diff.added:
+                            self._audio.queue_earthquake(ev)
+                            
+                            # Check if felt to queue the alert sound too
+                            if self._felt_radius_km > 0 and self._eq_panel:
+                                dist = self._eq_panel._haversine(user_lat, user_lon, ev.latitude, ev.longitude)
+                                if dist <= self._felt_radius_km:
+                                    self._audio.queue_felt()
+                                    logger.info("Queued FELT alert for M%.1f at %.0f km", ev.magnitude, dist)
+
+                # 3. Handle update ticks
+                if hasattr(msg.diff, 'updated') and msg.diff.updated and self._eq_initial_load_done:
+                    self._audio.queue_update()
+
+                # 4. Final Sync & UI Update
+                self._visible_events.sort(key=lambda e: e.time, reverse=True)
+                self._update_ui_state()
+                
                 if self._status_bar:
                     now = datetime.now(timezone.utc).strftime("%H:%M:%S")
                     self._status_bar.set_last_earthquake_update(now)
                     self._status_bar.set_status("ONLINE")
 
-                # Audio alerts for new earthquakes (skip the initial bulk load)
-                if msg.diff.added and self._eq_initial_load_done:
-                    strongest = max(msg.diff.added, key=lambda e: e.magnitude)
-                    self._audio.play_for_magnitude(strongest.magnitude)
-
-                    # Check if any new quake is "felt" at the station
-                    if self._felt_radius_km > 0 and self._eq_panel:
-                        user_lat = self._config.weather.latitude
-                        user_lon = self._config.weather.longitude
-                        for ev in msg.diff.added:
-                            dist = self._eq_panel._haversine(
-                                user_lat, user_lon, ev.latitude, ev.longitude
-                            )
-                            if dist <= self._felt_radius_km:
-                                self._audio.play_felt()
-                                self._felt_warning_time = time.monotonic()
-                                logger.info(
-                                    "FELT: M%.1f at %.0f km from station",
-                                    ev.magnitude, dist,
-                                )
-                                break  # One alert is enough
-
-                # Play update tick if there are updates
-                if hasattr(msg.diff, 'updated') and msg.diff.updated and self._eq_initial_load_done:
-                    self._audio.play("update")
-
-                # Mark initial load as done after first update
                 if not self._eq_initial_load_done:
                     self._eq_initial_load_done = True
 
@@ -514,6 +519,20 @@ class RadarApp:
                 if self._map_panel:
                     self._map_panel.set_user_location(msg.lat, msg.lon)
 
+        # Process delayed SFX/UI releases
+        released_eqs, felt_alerted = self._audio.tick()
+        if released_eqs or felt_alerted:
+            if released_eqs:
+                for ev in released_eqs:
+                    if ev.id not in [e.id for e in self._visible_events]:
+                        self._visible_events.append(ev)
+                self._visible_events.sort(key=lambda e: e.time, reverse=True)
+                self._update_ui_state(new_ids=[e.id for e in released_eqs])
+            
+            if felt_alerted:
+                self._felt_warning_time = time.monotonic()
+                logger.debug("FELT alert triggered on UI")
+
         # Process animations
         if self._wx_panel:
             self._wx_panel._frame_tick()
@@ -541,6 +560,13 @@ class RadarApp:
         if self._status_bar:
             self._status_bar.update_clock()
             self._status_bar.update_fps(dpg.get_frame_rate())
+
+    def _update_ui_state(self, new_ids: list[str] | None = None) -> None:
+        """Sync visible events to UI panels."""
+        if self._eq_panel:
+            self._eq_panel.update(self._visible_events, new_ids)
+        if self._map_panel:
+            self._map_panel.update(self._visible_events, new_ids)
 
     def _force_retry(self) -> None:
         # Prevent API throttling by spamming manual fetch

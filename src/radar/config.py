@@ -154,6 +154,14 @@ class AudioConfig(BaseModel):
     volume: float = Field(default=0.7, ge=0.0, le=1.0)
     felt_radius_km: float = Field(default=300.0, ge=0.0)
     felt_warning_duration_s: int = Field(default=240, ge=0)
+    sfx_delays: dict[str, float] = Field(default={
+        "level_0": 1.2,
+        "level_1": 1.7,
+        "level_2": 2.3,
+        "level_3": 2.3,
+        "felt": 9.0,
+        "update": 0.5
+    })
 
 
 class DebugConfig(BaseModel):
