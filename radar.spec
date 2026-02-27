@@ -3,8 +3,8 @@
 
 a = Analysis(
     ['src\\radar\\__main__.py'],
-    pathex=[],
-    binaries=[],
+    pathex=['.'],
+    binaries=[('_radar_signal.pyd', '.')],
     datas=[
         ('themes', 'themes'),
         ('config.toml', '.'),
