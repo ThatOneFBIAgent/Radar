@@ -1,86 +1,92 @@
 # ╔══════════════════════════════════════════════════════════╗
-# ║                RADAR — Configuration                    ║
+# ║                RADAR — Configuration                     ║
 # ╠══════════════════════════════════════════════════════════╣
-# ║  Edit this file to customize application behavior.      ║
-# ║  Restart the application after changes (except themes). ║
+# ║  Edit this file to customize application behavior.       ║
+# ║  Restart the application after changes (except themes).  ║
 # ╚══════════════════════════════════════════════════════════╝
 
 [general]
 # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 log_level = "INFO"
 
-# Unit system: "metric" or "imperial"
+# Units of measurement: "metric" (Celsius, km) or "imperial" (Fahrenheit, miles)
 units = "metric"
 
 [earthquake]
-# USGS GeoJSON feed URL
-# Options:
-#   all_hour, all_day, all_week, all_month
-#   1.0_hour, 1.0_day, 1.0_week, 1.0_month
-#   2.5_hour, 2.5_day, 2.5_week, 2.5_month
-#   4.5_hour, 4.5_day, 4.5_week, 4.5_month
-#   significant_hour, significant_day, significant_week, significant_month
+# USGS GeoJSON feed to monitor. 
+# Options: all_hour, all_day, all_week, 2.5_day, 4.5_week, significant_month, etc.
 feed = "all_week"
 
-# Polling interval in seconds (minimum 30)
+# How often to check for new data in seconds (minimum 30)
 poll_interval = 60
 
-# Magnitude threshold for highlighting (events >= this flash)
+# Magnitude threshold for automatic highlighting/alerting in the list
 highlight_threshold = 4.5
 
-# Maximum events to display in the list
+# Maximum number of events to store/display in the list
 max_display = 100
 
 [weather]
-# Location coordinates (default: Houston, TX)
+# Station coordinates (decimal degrees)
 latitude = 19.4326
 longitude = -99.1332
+
+# Display name for the weather station
 location_name = "CDMX, Mexico"
 
-# Polling interval in seconds (minimum 60)
+# How often to update weather data in seconds (minimum 120)
 poll_interval = 120
 
-# Show forecast panel (requires zoom into region)
+# Whether to show the 3-day forecast panel (if supported by theme)
 show_forecast = false
 
 [ui]
-# Active/default theme filename when opening (without .json extension)
+# Theme name (must exist as a JSON file in themes/)
+# Options: obsidian, phosphor, arctic, ember, terminal, matrix
 theme = "obsidian"
 
-# Font size in pixels
+# Global font size scaling (12-24)
 font_size = 15
 
-# Window dimensions (0 = auto)
+# Main window dimensions (0 = automatic based on screen resolution)
 window_width = 1400
 window_height = 900
 
-# Start maximized (this ignores window_width and window_height if true)
-start_maximized = true
-
-# Divided screen split
+# Panel split ratios (0.0 to 1.0)
+# split_x: Vertical split between map and list
+# split_y: Horizontal split between panels
 split_x = 0.75
 split_y = 0.4
 
-# Enable animations
+# Start the application in a maximized window
+start_maximized = true
+
+# Toggle UI animations (pulsing, transitions, etc.)
 animations = true
 
-# Animation speed multiplier (0.5 = slow, 2.0 = fast)
+# Global animation speed multiplier (0.5 = slow, 2.0 = fast)
 animation_speed = 1.0
 
 [audio]
-# Enable or disable UI sound effects
+# Master switch for all audio effects
 enabled = true
 
-# Master volume (0.0 = mute, 1.0 = full)
-volume = 0.7
+# Master volume (0.0 to 1.0)
+volume = 0.75
 
-# Radius in km from weather station — if a quake is within this range,
-# the "felt" alert sound plays and a warning indicator blinks.
+# Radius in KM from station to play a "felt" alert sound for quakes
 felt_radius_km = 300.0
 
-# How long (seconds) the "FELT" warning blinks on the scanner header.
+# How long (in seconds) the flashing "FELT MOTION" warning stays visible
 felt_warning_duration_s = 240
 
+# Delays (in seconds) for specific sound effect types
+# level_0-3: Magnitude-based notification sounds
+# felt: Proximity alert sound
+# update: Interface update sound
+sfx_delays = { "level_0" = 1.2, "level_1" = 1.7, "level_2" = 2.3, "level_3" = 2.3, "felt" = 9.0, "update" = 0.5 }
+
 [debug]
-# :3
-mock_feed_file = ""
+# Path to a local GeoJSON file to use instead of live USGS data.
+# Leave empty ("") for standard operation.
+mock_feed_file = "mock/sample_quakes.geojson"

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import dearpygui.dearpygui as dpg
 
-from radar.config import THEMES_DIR
+from radar.config import INTERNAL_THEMES_DIR, EXTERNAL_THEMES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -87,14 +87,19 @@ class ThemeData:
 
 
 # Loading───────────────
-def load_theme(name: str, themes_dir: Path | None = None) -> ThemeData:
-    """Load a theme JSON file by name and return validated ThemeData."""
-    directory = themes_dir or THEMES_DIR
-    path = directory / f"{name}.json"
+def load_theme(name: str) -> ThemeData:
+    """Load a theme JSON file by name and return validated ThemeData.
+    
+    Checks in EXTERNAL_THEMES_DIR first (user-defined), then fallbacks to 
+    INTERNAL_THEMES_DIR (bundled).
+    """
+    path = EXTERNAL_THEMES_DIR / f"{name}.json"
+    if not path.exists():
+        path = INTERNAL_THEMES_DIR / f"{name}.json"
 
     if not path.exists():
-        logger.error("Theme file not found: %s", path)
-        raise FileNotFoundError(f"Theme file not found: {path}")
+        logger.error("Theme file not found: %s", name)
+        raise FileNotFoundError(f"Theme file not found: {name}")
 
     with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
@@ -150,12 +155,21 @@ def _parse_theme(raw: dict, source: Path) -> ThemeData:
     return theme
 
 
-def get_available_themes(themes_dir: Path | None = None) -> list[str]:
-    """Return list of available theme names (without .json extension)."""
-    directory = themes_dir or THEMES_DIR
-    if not directory.exists():
-        return []
-    return sorted(p.stem for p in directory.glob("*.json"))
+def get_available_themes() -> list[str]:
+    """Return a combined list of available theme names from both internal and external dirs."""
+    themes = set()
+    
+    # Internal bundled themes
+    if INTERNAL_THEMES_DIR.exists():
+        for p in INTERNAL_THEMES_DIR.glob("*.json"):
+            themes.add(p.stem)
+            
+    # External user themes (can override)
+    if EXTERNAL_THEMES_DIR.exists():
+        for p in EXTERNAL_THEMES_DIR.glob("*.json"):
+            themes.add(p.stem)
+            
+    return sorted(list(themes))
 
 
 # DearPyGui application

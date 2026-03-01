@@ -56,12 +56,12 @@ class AudioEngine:
 
     def __init__(
         self,
-        sound_dir: Path,
+        sound_dirs: list[Path],
         volume: float = 0.7,
         enabled: bool = True,
         delays: dict[str, float] | None = None,
     ) -> None:
-        self._sound_dir = sound_dir
+        self._sound_dirs = sound_dirs
         self._volume = max(0.0, min(1.0, volume))
         self._enabled = enabled and _HAS_AUDIO
         self._lock = threading.Lock()
@@ -86,7 +86,7 @@ class AudioEngine:
         self._load_sounds()
 
         if not self._buffers:
-            logger.warning("No sound files found in %s — audio disabled", self._sound_dir)
+            logger.warning("No sound files found in %s — audio disabled", self._sound_dirs)
             self._enabled = False
             return
 
@@ -109,29 +109,30 @@ class AudioEngine:
             self._enabled = False
 
     def _load_sounds(self) -> None:
-        """Scan sound directory and decode all found audio files."""
-        if not self._sound_dir.exists():
-            logger.warning("Sound directory not found: %s", self._sound_dir)
-            return
+        """Scan sound directories and decode all found audio files."""
+        # Prioritize sounds found in later directories (user overrides)
+        for directory in self._sound_dirs:
+            if not directory.exists():
+                continue
 
-        for name, candidates in self._SOUND_FILES.items():
-            for filename in candidates:
-                path = self._sound_dir / filename
-                if path.exists():
-                    try:
-                        decoded = miniaudio.decode_file(
-                            str(path),
-                            output_format=miniaudio.SampleFormat.SIGNED16,
-                            nchannels=_NCHANNELS,
-                            sample_rate=_SAMPLE_RATE,
-                        )
-                        # Store as int16 array for fast slicing
-                        self._buffers[name] = array.array("h", decoded.samples)
-                        logger.debug("Loaded sound: %s (%s, %d samples)", name, filename, len(decoded.samples))
-                        break  # Stop checking candidates on success
-                    except Exception as e:
-                        logger.warning("Failed to decode %s: %s", filename, e)
-                        # Don't break here, try next candidate
+            for name, candidates in self._SOUND_FILES.items():
+                for filename in candidates:
+                    path = directory / filename
+                    if path.exists():
+                        try:
+                            decoded = miniaudio.decode_file(
+                                str(path),
+                                output_format=miniaudio.SampleFormat.SIGNED16,
+                                nchannels=_NCHANNELS,
+                                sample_rate=_SAMPLE_RATE,
+                            )
+                            # Store as int16 array for fast slicing (overwrites internal if found in external)
+                            self._buffers[name] = array.array("h", decoded.samples)
+                            logger.debug("Loaded sound: %s (%s, %d samples)", name, filename, len(decoded.samples))
+                            break  # Stop checking candidates for THIS directory
+                        except Exception as e:
+                            logger.warning("Failed to decode %s: %s", filename, e)
+                            # Don't break here, try next candidate
 
     def _stream_generator(self):
         """Audio stream generator — yields mixed audio frames forever."""

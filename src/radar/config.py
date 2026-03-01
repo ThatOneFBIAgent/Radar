@@ -19,47 +19,67 @@ from pydantic import BaseModel, Field, field_validator
 logger = logging.getLogger(__name__)
 
 # Resolve paths. 
-# PROJECT_ROOT: Points to the internal data (assets, data)
-# BASE_DIR: Points to the directory containing the .exe (for user-editable config/themes)
-# LOG_DIR: User-writable directory in LocalAppData for logs
+# PROJECT_ROOT: Points to the internal bundled assets (_internal in PyInstaller)
+# BASE_DIR: Points to the directory containing the .exe
+# USER_DATA_DIR: Persistent, writable directory for user config and logs
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     PROJECT_ROOT = Path(sys._MEIPASS)
     BASE_DIR = Path(sys.executable).parent
-    DATA_DIR = PROJECT_ROOT / "radar" / "data"
     
-    # Use %LOCALAPPDATA% for logs on Windows
+    # AppData for persistent storage on Windows
     _appdata = os.environ.get("LOCALAPPDATA")
-    if _appdata:
-        LOG_DIR = Path(_appdata) / "Radar"
-    else:
-        LOG_DIR = BASE_DIR # Fallback
+    USER_DATA_DIR = Path(_appdata) / "Radar" if _appdata else BASE_DIR / "data"
 else:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
     BASE_DIR = PROJECT_ROOT
-    DATA_DIR = PROJECT_ROOT / "src" / "radar" / "data"
-    LOG_DIR = BASE_DIR
+    USER_DATA_DIR = BASE_DIR
 
-# Ensure LOG_DIR exists
-try:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-except Exception:
-    pass
+DATA_DIR = PROJECT_ROOT / "src" / "radar" / "data" if not getattr(sys, "frozen", False) else PROJECT_ROOT / "radar" / "data"
+LOG_DIR = USER_DATA_DIR / "logs"
 
-# Prioritize external config.toml if it exists next to the .exe
-_ext_config = BASE_DIR / "config.toml"
-DEFAULT_CONFIG_PATH = _ext_config if _ext_config.exists() else PROJECT_ROOT / "config.toml"
+# Ensure directories exist
+for d in [USER_DATA_DIR, LOG_DIR]:
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
-# Prioritize external themes/ if it exists next to the .exe
-_ext_themes = BASE_DIR / "themes"
-THEMES_DIR = _ext_themes if _ext_themes.exists() else PROJECT_ROOT / "themes"
+def _resolve_writable_config() -> Path:
+    """Determine the best path for configuration persistence."""
+    portable = BASE_DIR / "config.toml"
+    if portable.exists():
+        return portable
+    
+    # If not present, check if we can write to the EXE directory (Portable Mode)
+    try:
+        test_file = BASE_DIR / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        return portable
+    except Exception:
+        # Fallback to AppData (Installed Mode)
+        return USER_DATA_DIR / "config.toml"
+
+DEFAULT_CONFIG_PATH = _resolve_writable_config()
+
+# Themes and Sounds: Separate internal (bundled) and external (user-writable)
+INTERNAL_THEMES_DIR = PROJECT_ROOT / "themes"
+EXTERNAL_THEMES_DIR = USER_DATA_DIR / "themes"
+THEMES_DIR = EXTERNAL_THEMES_DIR # Alias for legacy support
+
+INTERNAL_SOUND_DIR = PROJECT_ROOT / "sound"
+EXTERNAL_SOUND_DIR = USER_DATA_DIR / "sound"
+SOUND_DIR = EXTERNAL_SOUND_DIR # Alias for legacy support
+
+# Ensure external asset dirs exist
+for d in [EXTERNAL_THEMES_DIR, EXTERNAL_SOUND_DIR]:
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 ASSETS_DIR = PROJECT_ROOT / "assets"
 FONTS_DIR = ASSETS_DIR / "fonts"
-
-# Prioritize external sound/ if it exists next to the .exe
-_ext_sound = BASE_DIR / "sound"
-SOUND_DIR = _ext_sound if _ext_sound.exists() else PROJECT_ROOT / "sound"
-
 
 def get_resource_path(relative_path: str | Path) -> Path:
     """Get the absolute path to a resource, supporting both dev and PyInstaller modes."""
@@ -186,6 +206,17 @@ def load_config(path: Path | None = None) -> RadarConfig:
     """
     config_path = path or DEFAULT_CONFIG_PATH
 
+    # If the chosen config file doesn't exist, try to copy the internal bundled one as a template
+    if not config_path.exists():
+        internal_template = PROJECT_ROOT / "config.toml"
+        if internal_template.exists():
+            try:
+                import shutil
+                shutil.copy2(internal_template, config_path)
+                logger.info("Created user config from template: %s", config_path)
+            except Exception as e:
+                logger.warning("Could not create config template: %s", e)
+
     if not config_path.exists():
         logger.warning("Config file not found at %s — using defaults", config_path)
         return RadarConfig()
@@ -228,3 +259,51 @@ def load_config(path: Path | None = None) -> RadarConfig:
             logger.warning("Config section [%s] must be a table — keeping defaults", key)
 
     return final_config
+
+
+def save_config(config: RadarConfig, path: Path | None = None) -> bool:
+    """Save the configuration to a TOML file.
+
+    Manually serializes the Pydantic model to TOML format to avoid extra dependencies.
+    """
+    config_path = path or DEFAULT_CONFIG_PATH
+    try:
+        lines = [
+            "# ╔══════════════════════════════════════════════════════════╗",
+            "# ║                RADAR — Configuration                     ║",
+            "# ╠══════════════════════════════════════════════════════════╣",
+            "# ║  Edit this file to customize application behavior.       ║",
+            "# ║  Restart the application after changes (except themes).  ║",
+            "# ║  NOTE: Manual comments are lost on save. See README.md.  ║",
+            "# ╚══════════════════════════════════════════════════════════╝",
+            "",
+        ]
+
+        # Use model_dump to get a dict, then manually format sections
+        data = config.model_dump()
+
+        for section, values in data.items():
+            if not values:
+                continue
+            lines.append(f"[{section}]")
+            for key, val in values.items():
+                if isinstance(val, str):
+                    lines.append(f'{key} = "{val}"')
+                elif isinstance(val, bool):
+                    lines.append(f"{key} = {str(val).lower()}")
+                elif isinstance(val, dict):
+                    # Simple dict formatting (for sfx_delays)
+                    dict_str = ", ".join([f'"{k}" = {v}' for k, v in val.items()])
+                    lines.append(f"{key} = {{{dict_str}}}")
+                else:
+                    lines.append(f"{key} = {val}")
+            lines.append("")
+
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        
+        logger.info("Saved config to %s", config_path)
+        return True
+    except Exception as e:
+        logger.error("Failed to save config to %s: %s", config_path, e)
+        return False

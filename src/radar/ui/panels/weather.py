@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from typing import TYPE_CHECKING
 
 import dearpygui.dearpygui as dpg
 
+from radar.ui.animations import ease_in_out_sine
 from radar.ui.viewport import get_header_font, get_large_font
 
 if TYPE_CHECKING:
@@ -54,7 +56,7 @@ class WeatherPanel:
             dpg.set_value(self._tags["location"], name)
 
     def _on_search_change(self, sender: int | str, query: str) -> None:
-        """Handle search input sensing."""
+        """Handle search input — live filtering."""
         if not self._city_index or not query or len(query) < 2:
             dpg.configure_item("city_results", show=False)
             return
@@ -63,16 +65,19 @@ class WeatherPanel:
         self._search_results = results
         
         if not results:
-            dpg.configure_item("city_results", show=False)
+            dpg.configure_item("city_results", items=["No results found"], show=True)
             return
 
         items = [c.display_name for c in results]
         try:
             dpg.configure_item("city_results", items=items, show=True)
-            # Reset selection so it doesn't auto-select first item visually
             dpg.set_value("city_results", "") 
         except Exception:
             pass
+
+    def _on_search_focus_lost(self, sender: int | str, app_data: Any) -> None:
+        """Hide search results when the input loses focus."""
+        dpg.configure_item("city_results", show=False)
 
     def _on_city_select(self, sender: int | str, app_data: str) -> None:
         """Handle city selection from dropdown."""
@@ -112,16 +117,20 @@ class WeatherPanel:
             dpg.add_separator()
             
             # Search Bar
-            dpg.add_input_text(
+            search_input = dpg.add_input_text(
                 tag="city_search",
                 hint="Search city (e.g. 'Tokyo' or 'Paris, FR')",
                 width=-1,
                 callback=self._on_search_change,
-                on_enter=True, # Also trigger on enter
+                on_enter=True,
             )
             
+            # Dismiss search results when search input loses focus
+            with dpg.item_handler_registry() as search_handler:
+                dpg.add_item_deactivated_after_edit_handler(callback=self._on_search_focus_lost)
+            dpg.bind_item_handler_registry(search_input, search_handler)
+            
             # Overlay listbox for search results (initially hidden)
-            # We place it before next items so it pushes them down (simpler than overlay layer)
             dpg.add_listbox(
                 tag="city_results",
                 items=[],
@@ -310,21 +319,22 @@ class WeatherPanel:
 
     def trigger_update_pulse(self) -> None:
         """Starts a visual scale animation pulse on the compass."""
-        self._pulse_frame = 0
+        self._pulse_start = time.monotonic()
         self._is_pulsing = True
 
     def _frame_tick(self) -> None:
         """Called every frame by the main app loop to handle animations."""
         if getattr(self, '_is_pulsing', False) and self._data and "compass_draw" in self._tags:
-            self._pulse_frame += 1
-            if self._pulse_frame > 30: # Frames to run
+            elapsed = time.monotonic() - self._pulse_start
+            duration = 0.5  # seconds
+            if elapsed > duration:
                 self._is_pulsing = False
                 self._draw_compass(self._data.wind_direction, scale=1.0)
                 return
             
-            # Math sin curve from 0->PI creates a 1.0 -> 1.08 -> 1.0 bump
-            progress = self._pulse_frame / 30.0
-            scale_bump = 1.0 + (math.sin(progress * math.pi) * 0.08)
+            # Smooth ease-in-out bump: 1.0 → 1.05 → 1.0
+            progress = elapsed / duration
+            scale_bump = 1.0 + (ease_in_out_sine(progress) * math.sin(progress * math.pi) * 0.05)
             
             self._draw_compass(self._data.wind_direction, scale=scale_bump)
 

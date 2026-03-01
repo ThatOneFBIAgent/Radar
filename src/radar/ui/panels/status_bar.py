@@ -27,11 +27,15 @@ class StatusBar:
         available_themes: list[str] | None = None,
         on_theme_change: Callable[[str], None] | None = None,
         on_retry: Callable[[], None] | None = None,
+        on_volume_change: Callable[[float], None] | None = None,
+        initial_volume: float = 0.7,
     ) -> None:
         self._theme = theme
         self._available = available_themes or get_available_themes()
         self._on_theme_change = on_theme_change
         self._on_retry = on_retry
+        self._on_volume_change = on_volume_change
+        self._initial_volume = initial_volume
         self._tags: dict[str, int | str] = {}
 
     def _status_clicked(self, sender: int | str, app_data: Any, user_data: Any) -> None:
@@ -93,6 +97,20 @@ class StatusBar:
 
                 dpg.add_text(" | ", color=self._theme.color("border"))
 
+                # Volume slider
+                dpg.add_text("VOL:", color=self._theme.color("text_dim"))
+                self._tags["volume"] = dpg.add_slider_int(
+                    default_value=int(self._initial_volume * 100),
+                    min_value=0,
+                    max_value=100,
+                    width=80,
+                    format="%d%%",
+                    callback=self._volume_changed,
+                    no_input=True,
+                )
+
+                dpg.add_text(" | ", color=self._theme.color("border"))
+
                 # FPS
                 dpg.add_text("FPS:", color=self._theme.color("text_dim"))
                 self._tags["fps"] = dpg.add_text(
@@ -103,6 +121,17 @@ class StatusBar:
         """Handle theme combo box change."""
         if self._on_theme_change:
             self._on_theme_change(value)
+
+    def _volume_changed(self, sender: int | str, value: int) -> None:
+        """Handle volume slider change."""
+        if self._on_volume_change:
+            self._on_volume_change(value / 100.0)
+
+    def get_volume(self) -> float:
+        """Return the current volume slider value."""
+        if "volume" in self._tags and dpg.does_item_exist(self._tags["volume"]):
+            return dpg.get_value(self._tags["volume"]) / 100.0
+        return self._initial_volume
 
     def update_clock(self) -> None:
         """Update the UTC clock display (call each frame or periodically)."""

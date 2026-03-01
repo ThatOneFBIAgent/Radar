@@ -125,6 +125,7 @@ class MapPanel:
 
         # Selection state
         self._selected_id: str | None = None
+        self._last_hovered_id: str | None = None  # Track to avoid re-firing callbacks
 
         # Felt warning state
         self._felt_warning: bool = False
@@ -421,30 +422,33 @@ class MapPanel:
         # Only perform hit tests if the mouse is physically over the map panel
         if self._draw_tag and dpg.is_item_hovered(self._draw_tag):
             try:
-                # get_drawing_mouse_pos cleanly handles drawlist local coordinates
                 mouse_x, mouse_y = dpg.get_drawing_mouse_pos()
             except AttributeError:
-                # Fallback for older dearpygui versions
                 mouse_x, mouse_y = dpg.get_mouse_pos(local=True)
 
             # Simple proximity check (squared distance for speed)
-            # Check in reverse order (draw order) to pick top-most
             for event in reversed(self._events):
                 x, y = self._geo_to_pixel(event.longitude, event.latitude)
                 dist_sq = (mouse_x - x) ** 2 + (mouse_y - y) ** 2
-                # Radius approx 6px + buffer
                 if dist_sq < 100:  # 10px radius
                     hovered = event
                     break
 
-        # Notify callbacks
-        if self._on_hover and hovered:
-             self._on_hover(hovered.id)
+        # Notify hover callback only on changes
+        hovered_id = hovered.id if hovered else None
+        if hovered_id != self._last_hovered_id:
+            self._last_hovered_id = hovered_id
+            if self._on_hover:
+                self._on_hover(hovered_id)  # None signals unhover
              
         # Handle click
         if dpg.is_mouse_button_clicked(dpg.mvMouseButton_Left) and self._draw_tag and dpg.is_item_hovered(self._draw_tag):
-            if hovered and self._on_click:
-                self._on_click(hovered.id)
+            if self._on_click:
+                if hovered:
+                    self._on_click(hovered.id)
+                elif self._selected_id:
+                    # Clicked empty space on map — deselect
+                    self._on_click(None)
 
         # 2. Draw Events (with highlight)
         for event in self._events:
@@ -518,12 +522,7 @@ class MapPanel:
 
     def set_selection(self, event_id: str | None) -> None:
         """Set the current selected event ID for persistent highlighting."""
-        if self._selected_id == event_id:
-            # Toggle off if same clicked again
-            self._selected_id = None
-        else:
-            self._selected_id = event_id
-            
+        self._selected_id = event_id
         logger.debug("Map selection set to: %s", self._selected_id)
 
     def set_felt_warning(self, active: bool) -> None:

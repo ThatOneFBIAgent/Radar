@@ -77,43 +77,62 @@ See [INSTALL.md](INSTALL.md) for full setup instructions including Rust/C extens
 
 ## Configuration
 
-All settings live in `config.toml` at the project root:
+All settings live in `config.toml`. The application uses a smart path resolution system to ensure persistence without requiring administrator privileges:
 
-```toml
-[general]
-log_level = "INFO"
-units = "metric"            # "metric" or "imperial"
+1. **Portable Mode**: If `config.toml` exists in the same folder as the executable (and is writable), it is used as the primary configuration.
+2. **Installed mode**: If the executable is in a restricted folder (e.g., `Program Files`), the app automatically relocates user data to `%LOCALAPPDATA%\Radar\config.toml`.
+3. **Development**: In a dev environment, it defaults to the project root.
 
-[earthquake]
-feed = "all_hour"           # all_hour, 2.5_day, significant_week, etc.
-poll_interval = 60          # seconds (minimum 30)
-highlight_threshold = 4.5   # magnitude threshold for event highlighting
+> [!WARNING]
+> The application rewrites `config.toml` on exit to save current settings (like volume). This process **removes manual comments** from the file. Refer to this README for the full documentation of available fields.
 
-[weather]
-latitude = 29.7604          # your location
-longitude = -95.3698
-location_name = "Houston, TX"
-poll_interval = 120         # seconds (minimum 60)
+### [general]
+| Key | Description | Default |
+|---|---|---|
+| `log_level` | `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
+| `units` | `metric` (Celsius/km) or `imperial` (Fahrenheit/miles) | `metric` |
 
-[ui]
-theme = "obsidian"          # obsidian, phosphor, arctic, ember, terminal, matrix
-font_size = 15
-animations = true
-window_width = 1400         # 0 = auto
-window_height = 900
-split_x = 0.75              # 0 = full width, 1 = full height (from left to right)
-split_y = 0.4               # 0 = full width, 1 = full height (from top to bottom)
-start_maximized = true      # If true, ignores window sizes
+### [earthquake]
+| Key | Description | Default |
+|---|---|---|
+| `feed` | USGS feed (`all_hour`, `all_day`, `all_week`, `2.5_day`, `4.5_week`, etc.) | `all_week` |
+| `poll_interval` | Wait time between updates in seconds (min 30) | `60` |
+| `highlight_threshold` | Magnitude threshold for list highlighting | `4.5` |
+| `max_display` | Maximum events to store/display | `100` |
 
-[audio]
-enabled = true
-volume = 0.7
-felt_radius_km = 300.0      # Play alert sound if quake is within this radius
-felt_warning_duration_s = 240 # How long warning stays on screen
+### [weather]
+| Key | Description | Default |
+|---|---|---|
+| `latitude` / `longitude` | Your station coordinates (decimal degrees) | `19.4326, -99.1332` |
+| `location_name` | Display label for your station | `CDMX, Mexico` |
+| `poll_interval` | Wait time between weather updates (min 120) | `120` |
+| `show_forecast` | Toggle 3-day forecast panel visibility | `false` |
 
-[debug]
-mock_feed_file = ""         # Set to path like "mock/sample_quakes.geojson" to test without live updates
-```
+### [ui]
+| Key | Description | Default |
+|---|---|---|
+| `theme` | `obsidian`, `phosphor`, `arctic`, `ember`, `terminal`, `matrix` | `obsidian` |
+| `font_size` | Global interface scaling (12-24) | `15` |
+| `window_width` / `height` | Main window size (0 = auto) | `1400, 900` |
+| `split_x` / `split_y` | Panel split ratios (0.0 to 1.0) | `0.75, 0.4` |
+| `start_maximized` | Overrides window size if true | `true` |
+| `animations` | Toggle UI motion effects | `true` |
+| `animation_speed` | Speed multiplier (0.5 to 2.0) | `1.0` |
+
+### [audio]
+| Key | Description | Default |
+|---|---|---|
+| `enabled` | Master switch for sound effects | `true` |
+| `volume` | Master volume (0.0 to 1.0) | `0.75` |
+| `felt_radius_km` | Distance threshold for proximity alerts | `300.0` |
+| `felt_warning_duration_s` | Flash duration for felt motion warning | `240` |
+| `sfx_delays` | Map of delays for notification sounds `{ "level_0" = 1.2, ... }` | See file |
+
+### [debug]
+| Key | Description | Default |
+|---|---|---|
+| `mock_feed_file` | Path to a GeoJSON file to use instead of live data | `""` |
+
 > [!NOTE]
 > The alarm system is based off of the weather station location, it is recommended you set this to your location, or closeby.
 

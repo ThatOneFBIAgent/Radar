@@ -94,10 +94,10 @@ def create_viewport(config: RadarConfig) -> None:
 
     _setup_fonts(config.ui.font_size, 1.3)
     
-    # Icon setup
-    icon_path = ASSETS_DIR / "icon.png"
+    # Icon setup — prefer .ico on Windows for proper title bar / taskbar display
+    icon_path = ASSETS_DIR / "icon.ico"
     if not icon_path.exists():
-        icon_path = ASSETS_DIR / "icon.ico"
+        icon_path = ASSETS_DIR / "icon.png"
     
     if icon_path.exists():
         try:

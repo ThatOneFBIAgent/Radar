@@ -17,7 +17,7 @@ from typing import Any
 
 import dearpygui.dearpygui as dpg
 
-from radar.config import RadarConfig, THEMES_DIR, SOUND_DIR
+from radar.config import RadarConfig, THEMES_DIR, SOUND_DIR, save_config, INTERNAL_SOUND_DIR, EXTERNAL_SOUND_DIR
 from radar.audio import AudioEngine
 from radar.data.earthquake import EarthquakeDiff, EarthquakeEvent, EarthquakeFetcher
 from radar.data.weather import WeatherData, WeatherFetcher
@@ -80,7 +80,7 @@ class RadarApp:
 
         # Audio engine
         self._audio = AudioEngine(
-            sound_dir=SOUND_DIR,
+            sound_dirs=[INTERNAL_SOUND_DIR, EXTERNAL_SOUND_DIR],
             volume=config.audio.volume,
             enabled=config.audio.enabled,
             delays=config.audio.sfx_delays,
@@ -345,12 +345,13 @@ class RadarApp:
                 # Wire list-to-map selection + click sound
                 def _on_eq_click(event_id: str) -> None:
                     if self._map_panel:
-                        # Detect if this is a deselect (clicking the same one again)
                         is_deselect = (self._map_panel._selected_id == event_id)
-                        self._map_panel.set_selection(event_id)
                         if is_deselect:
+                            self._map_panel.set_selection(None)
+                            self._eq_panel.select_event(None)
                             self._audio.play("unclick")
                         else:
+                            self._map_panel.set_selection(event_id)
                             self._audio.play("click")
                 self._eq_panel.set_on_click(_on_eq_click)
 
@@ -369,13 +370,26 @@ class RadarApp:
             with dpg.child_window(tag="map_panel_container", border=False):
                 dpg.bind_item_theme(dpg.last_item(), layout_theme)
                 
-                def _on_map_hover(event_id: str) -> None:
+                def _on_map_hover(event_id: str | None) -> None:
                     if self._eq_panel:
-                        self._eq_panel.highlight_event(event_id)
+                        self._eq_panel.set_hover(event_id)
                 
-                def _on_map_click(event_id: str) -> None:
-                    if self._eq_panel:
-                        self._eq_panel.select_event(event_id)
+                def _on_map_click(event_id: str | None) -> None:
+                    if self._eq_panel and self._map_panel:
+                        if event_id is None:
+                            # Clicked empty space — deselect
+                            self._map_panel.set_selection(None)
+                            self._eq_panel.select_event(None)
+                            self._audio.play("unclick")
+                        elif self._map_panel._selected_id == event_id:
+                            # Toggle off
+                            self._map_panel.set_selection(None)
+                            self._eq_panel.select_event(None)
+                            self._audio.play("unclick")
+                        else:
+                            self._map_panel.set_selection(event_id)
+                            self._eq_panel.select_event(event_id)
+                            self._audio.play("click")
                         
                 self._map_panel = MapPanel(self._theme, on_hover=_on_map_hover, on_click=_on_map_click)
                 self._map_panel.set_user_location(
@@ -395,6 +409,8 @@ class RadarApp:
                     available_themes=get_available_themes(),
                     on_theme_change=lambda name: self._queue.put(_ThemeReload(name)),
                     on_retry=self._force_retry,
+                    on_volume_change=self._on_volume_change,
+                    initial_volume=self._config.audio.volume,
                 )
                 self._status_bar.build(dpg.last_item())
 
@@ -585,6 +601,11 @@ class RadarApp:
         if self._status_bar:
             self._status_bar.set_status("CONNECTING")
 
+    def _on_volume_change(self, value: float) -> None:
+        """Handle volume change from status bar."""
+        self._audio.set_volume(value)
+        self._config.audio.volume = value
+
     # Public interface
     def run(self) -> None:
         """Launch the application."""
@@ -640,6 +661,9 @@ class RadarApp:
         """Clean shutdown of all subsystems."""
         logger.info("Shutting down...")
         self._running = False
+
+        # Save configuration (persists volume, etc.)
+        save_config(self._config)
 
         # Stop audio
         self._audio.stop()
