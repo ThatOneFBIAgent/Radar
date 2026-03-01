@@ -89,4 +89,4 @@ sfx_delays = { "level_0" = 1.2, "level_1" = 1.7, "level_2" = 2.3, "level_3" = 2.
 [debug]
 # Path to a local GeoJSON file to use instead of live USGS data.
 # Leave empty ("") for standard operation.
-mock_feed_file = "mock/sample_quakes.geojson"
+mock_feed_file = ""

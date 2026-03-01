@@ -34,23 +34,65 @@ else:
     BASE_DIR = PROJECT_ROOT
     USER_DATA_DIR = BASE_DIR
 
+# 1. Define ALL directory constants first
 DATA_DIR = PROJECT_ROOT / "src" / "radar" / "data" if not getattr(sys, "frozen", False) else PROJECT_ROOT / "radar" / "data"
 LOG_DIR = USER_DATA_DIR / "logs"
 
-# Ensure directories exist
-for d in [USER_DATA_DIR, LOG_DIR]:
+INTERNAL_THEMES_DIR = PROJECT_ROOT / "themes"
+EXTERNAL_THEMES_DIR = USER_DATA_DIR / "themes"
+THEMES_DIR = EXTERNAL_THEMES_DIR  # Legacy alias
+
+INTERNAL_SOUND_DIR = PROJECT_ROOT / "sound"
+EXTERNAL_SOUND_DIR = USER_DATA_DIR / "sound"
+SOUND_DIR = EXTERNAL_SOUND_DIR  # Legacy alias
+
+ASSETS_DIR = PROJECT_ROOT / "assets"
+FONTS_DIR = ASSETS_DIR / "fonts"
+
+# 2. Ensure ALL directories exist (before any logic uses them)
+for d in [USER_DATA_DIR, LOG_DIR, EXTERNAL_THEMES_DIR, EXTERNAL_SOUND_DIR]:
     try:
         d.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Could not create directory %s: %s", d, e)
 
+# 3. Asset Unpacker (consumes defined constants)
+def _ensure_assets_unpacked():
+    """Copy bundled themes and sounds to user data directory if they don't exist."""
+    import shutil
+    
+    # Internal -> External mapping
+    for src_dir, dest_dir in [
+        (INTERNAL_THEMES_DIR, EXTERNAL_THEMES_DIR),
+        (INTERNAL_SOUND_DIR, EXTERNAL_SOUND_DIR)
+    ]:
+        if src_dir.exists() and dest_dir.exists():
+            for src_file in src_dir.glob("*"):
+                dest_file = dest_dir / src_file.name
+                if not dest_file.exists():
+                    try:
+                        if src_file.is_file():
+                            shutil.copy2(src_file, dest_file)
+                        elif src_file.is_dir():
+                            shutil.copytree(src_file, dest_file, dirs_exist_ok=True)
+                    except Exception as e:
+                        logger.warning("Failed to unpack asset %s: %s", src_file.name, e)
+
+# Run unpacker if in frozen/portable environment
+if getattr(sys, "frozen", False):
+    try:
+        _ensure_assets_unpacked()
+    except Exception as e:
+        logger.error("Critical failure during asset unpacking: %s", e)
+
+# 4. Final resolution logic
 def _resolve_writable_config() -> Path:
     """Determine the best path for configuration persistence."""
     portable = BASE_DIR / "config.toml"
     if portable.exists():
         return portable
     
-    # If not present, check if we can write to the EXE directory (Portable Mode)
+    # Try Portable Mode (check write access to EXE dir)
     try:
         test_file = BASE_DIR / ".write_test"
         test_file.touch()
@@ -61,26 +103,6 @@ def _resolve_writable_config() -> Path:
         return USER_DATA_DIR / "config.toml"
 
 DEFAULT_CONFIG_PATH = _resolve_writable_config()
-
-# Themes and Sounds: Separate internal (bundled) and external (user-writable)
-INTERNAL_THEMES_DIR = PROJECT_ROOT / "themes"
-EXTERNAL_THEMES_DIR = USER_DATA_DIR / "themes"
-THEMES_DIR = EXTERNAL_THEMES_DIR # Alias for legacy support
-
-INTERNAL_SOUND_DIR = PROJECT_ROOT / "sound"
-EXTERNAL_SOUND_DIR = USER_DATA_DIR / "sound"
-SOUND_DIR = EXTERNAL_SOUND_DIR # Alias for legacy support
-
-# Ensure external asset dirs exist
-for d in [EXTERNAL_THEMES_DIR, EXTERNAL_SOUND_DIR]:
-    try:
-        d.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
-
-ASSETS_DIR = PROJECT_ROOT / "assets"
-FONTS_DIR = ASSETS_DIR / "fonts"
-
 def get_resource_path(relative_path: str | Path) -> Path:
     """Get the absolute path to a resource, supporting both dev and PyInstaller modes."""
     # If the path is already absolute, return it
@@ -281,6 +303,10 @@ def save_config(config: RadarConfig, path: Path | None = None) -> bool:
 
         # Use model_dump to get a dict, then manually format sections
         data = config.model_dump()
+        
+        # Ensure mock_feed_file is empty for standard saves unless explicitly set to a valid path
+        if not data.get("debug", {}).get("mock_feed_file"):
+            data["debug"]["mock_feed_file"] = ""
 
         for section, values in data.items():
             if not values:
